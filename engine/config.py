@@ -50,6 +50,7 @@ class Settings:
     risk: dict[str, Any]
     filters: dict[str, Any]
     groups: dict[str, Any]
+    sources: dict[str, Any] = field(default_factory=dict)
     all_features: dict[str, str] = field(default_factory=dict)
 
     def enabled(self, feature: str) -> bool:
@@ -101,6 +102,7 @@ def load_settings(plan_name: str | None = None, config_dir: Path = CONFIG_DIR) -
         risk=_load_yaml("risk.yaml", config_dir),
         filters=_load_yaml("filters.yaml", config_dir),
         groups=_load_yaml("groups.yaml", config_dir),
+        sources=_load_yaml("sources.yaml", config_dir),
         all_features=all_features,
     )
 

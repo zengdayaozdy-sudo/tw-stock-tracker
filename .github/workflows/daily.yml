@@ -1,0 +1,37 @@
+name: 每日收盤後批次
+
+on:
+  schedule:
+    # 台灣時間週一至週五 15:30（UTC 07:30）；GitHub 排程可能延遲數分鐘到數十分鐘
+    - cron: "30 7 * * 1-5"
+  workflow_dispatch:
+    inputs:
+      date:
+        description: 補跑日期 YYYY-MM-DD（留空為今天）
+        required: false
+
+concurrency:
+  group: daily
+  cancel-in-progress: false
+
+jobs:
+  daily:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      PLAN: ${{ vars.PLAN || 'free' }}
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      FINMIND_TOKEN: ${{ secrets.FINMIND_TOKEN }}
+      LINE_CHANNEL_ACCESS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}
+      LINE_OWNER_USER_ID: ${{ secrets.LINE_OWNER_USER_ID }}
+      TZ: Asia/Taipei
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e .
+      - name: 套用資料庫結構
+        run: python -m engine.cli migrate
+      - name: 抓取資料與完整性檢查
+        run: python -m engine.cli fetch ${{ inputs.date && format('--date {0}', inputs.date) || '' }}

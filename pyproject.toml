@@ -17,8 +17,11 @@ dev = ["pytest>=8", "ruff>=0.6"]
 testpaths = ["engine/tests"]
 
 [tool.ruff]
-line-length = 110
+line-length = 125
 target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
 
 [tool.setuptools.packages.find]
 include = ["engine*"]

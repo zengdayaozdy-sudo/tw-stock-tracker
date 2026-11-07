@@ -1,0 +1,59 @@
+# 外部資料來源設定
+# verified: true 代表已由官方文件確認；false 代表需在 GitHub Actions 執行
+# `python -m engine.cli probe` 實測確認欄位後再改成 true。
+
+finmind:
+  base_url: https://api.finmindtrade.com/api/v4/data
+  verified: true
+  # 官方快速入門：有 token 每小時 600 次，無 token 300 次
+  hourly_limit:
+    free: 600
+    sponsor: 6000      # 待確認：以官網方案頁為準
+    pro: 6000
+  safety_margin: 0.9   # 只用到上限的 90%
+  datasets:
+    stock_info: TaiwanStockInfo
+    price: TaiwanStockPrice
+    month_revenue: TaiwanStockMonthRevenue
+    income_statement: TaiwanStockFinancialStatements
+    balance_sheet: TaiwanStockBalanceSheet
+    cash_flow: TaiwanStockCashFlowsStatement
+    per: TaiwanStockPER
+    dividend: TaiwanStockDividend
+    institutional: TaiwanStockInstitutionalInvestorsBuySell
+    margin: TaiwanStockMarginPurchaseShortSale
+    shareholding: TaiwanStockShareholding
+    holding_distribution: TaiwanStockHoldingSharesPer   # 付費
+    broker_report: TaiwanStockTradingDailyReport        # Sponsor（單檔）；全市場需 Sponsor Pro
+
+twse:
+  verified: false
+  endpoints:
+    daily_all: https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL
+    valuation_all: https://openapi.twse.com.tw/v1/exchangeReport/BWIBBU_ALL
+    margin_all: https://openapi.twse.com.tw/v1/exchangeReport/MI_MARGN
+    company_info: https://openapi.twse.com.tw/v1/opendata/t187ap03_L
+    disposition: https://openapi.twse.com.tw/v1/announcement/punish
+    attention: https://openapi.twse.com.tw/v1/announcement/notice
+    institutional: https://www.twse.com.tw/rwd/zh/fund/T86?date={date}&selectType=ALLBUT0999&response=json
+    taiex_history: https://www.twse.com.tw/rwd/zh/TAIEX/MI_5MINS_HIST?date={date}&response=json
+
+tpex:
+  verified: false
+  endpoints:
+    daily_all: https://www.tpex.org.tw/openapi/v1/tpex_mainboard_daily_close_quotes
+    valuation_all: https://www.tpex.org.tw/openapi/v1/tpex_mainboard_peratio_analysis
+    margin_all: https://www.tpex.org.tw/openapi/v1/tpex_mainboard_margin_balance
+    company_info: https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap03_O
+    institutional: https://www.tpex.org.tw/openapi/v1/tpex_3insti_daily_trading
+
+tdcc:
+  verified: false
+  # 集保股權分散表（每週），免費模式用
+  holding_distribution: https://opendata.tdcc.com.tw/getOD.ashx?id=1-5
+
+http:
+  timeout_seconds: 30
+  max_retries: 4
+  backoff_base_seconds: 2
+  user_agent: tw-stock-tracker/0.1

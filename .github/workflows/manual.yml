@@ -1,0 +1,48 @@
+name: 手動操作
+
+on:
+  workflow_dispatch:
+    inputs:
+      command:
+        description: 要執行的指令
+        type: choice
+        options:
+          - probe
+          - companies
+          - seed-groups
+          - watch-add
+          - watch-remove
+          - watch-list
+          - backfill
+          - plan
+      args:
+        description: 參數（例如股票代號，以空白分隔：2330 2317 2454）
+        required: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    env:
+      PLAN: ${{ vars.PLAN || 'free' }}
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      FINMIND_TOKEN: ${{ secrets.FINMIND_TOKEN }}
+      TZ: Asia/Taipei
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e .
+      - name: 執行
+        env:
+          CMD: ${{ inputs.command }}
+          ARGS: ${{ inputs.args }}
+        run: |
+          case "$CMD" in
+            probe|companies|seed-groups|plan) python -m engine.cli "$CMD" ;;
+            watch-add)    python -m engine.cli watch add $ARGS ;;
+            watch-remove) python -m engine.cli watch remove $ARGS ;;
+            watch-list)   python -m engine.cli watch list ;;
+            backfill)     python -m engine.cli backfill $ARGS ;;
+          esac

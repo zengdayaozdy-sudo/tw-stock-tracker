@@ -1,0 +1,198 @@
+"""收盤後資料抓取流程（第 4 節步驟 1–2）。
+
+免費模式：證交所／櫃買公開資料抓全市場行情、估值、法人、融資券（不耗 FinMind 額度），
+FinMind 只用來補自選股的財報、月營收與歷史資料。
+付費模式：以 feature flag 決定是否改用 FinMind 全市場資料。
+"""
+
+from __future__ import annotations
+
+import logging
+from dataclasses import dataclass, field
+from datetime import date, timedelta
+
+from engine.config import Settings
+from engine.quality import QualityReport, check_chips, check_price_jumps, check_prices
+from engine.repository import Repository
+from engine.sources import finmind as fm
+from engine.sources.exchanges import ExchangeClient
+from engine.sources.finmind import FinMindClient
+
+log = logging.getLogger(__name__)
+
+MIN_MARKET_ROWS = 1500  # 上市＋上櫃普通股約 1,800 檔，低於此數視為資料不完整
+
+
+@dataclass
+class FetchResult:
+    trade_date: date
+    market_open: bool = True
+    counts: dict[str, int] = field(default_factory=dict)
+    quality: QualityReport = field(default_factory=QualityReport)
+    finmind_calls: int = 0
+
+    def to_dict(self) -> dict:
+        return {
+            "trade_date": self.trade_date.isoformat(),
+            "market_open": self.market_open,
+            "counts": self.counts,
+            "quality": self.quality.to_dict(),
+            "finmind_calls": self.finmind_calls,
+        }
+
+
+def universe(settings: Settings, repo: Repository) -> list[str]:
+    if settings.enabled("full_market_scan"):
+        return repo.all_stock_ids()
+    ids = repo.watchlist()
+    limit = settings.plan.watchlist_limit
+    if limit and len(ids) > limit:
+        log.warning("自選股 %d 檔超過免費模式上限 %d，只處理前 %d 檔", len(ids), limit, limit)
+        ids = ids[:limit]
+    return ids
+
+
+def fetch_daily(
+    settings: Settings, repo: Repository, exchange: ExchangeClient, finmind: FinMindClient, trade_date: date
+) -> FetchResult:
+    result = FetchResult(trade_date)
+    if trade_date.weekday() >= 5:
+        result.market_open = False
+        return result
+
+    # 1. 全市場行情（免費），同時更新股票清單
+    prices = exchange.daily_prices(trade_date)
+    latest = max((r["date"] for r in prices), default=None)
+    if latest is None or latest < trade_date:
+        # 官方最新資料不是今天：休市日，或資料尚未更新
+        result.market_open = False
+        result.counts["latest_available"] = latest.isoformat() if latest else None
+        return result
+    prices = [r for r in prices if r["date"] == trade_date]
+
+    known = repo.known_stock_ids()
+    new_stocks = [
+        {"stock_id": r["stock_id"], "name": r["name"], "market": r["market"]}
+        for r in prices
+        if r["stock_id"] not in known
+    ]
+    if new_stocks:
+        repo.upsert_stocks(new_stocks)
+    result.counts["prices"] = repo.upsert("daily_prices", prices)
+
+    ids = universe(settings, repo)
+    result.quality = check_prices(prices, trade_date, ids, MIN_MARKET_ROWS)
+
+    # 2. 估值、法人、融資券（免費，全市場）
+    known = repo.known_stock_ids()
+    valuations = [r for r in exchange.valuations(trade_date) if r["stock_id"] in known]
+    result.counts["valuations"] = repo.upsert("valuations", valuations)
+
+    inst = [r for r in exchange.institutional(trade_date) if r["stock_id"] in known]
+    result.counts["institutional"] = repo.upsert_chips(inst)
+    _merge(result.quality, check_chips(inst, ids, "三大法人"))
+
+    margin = [r for r in exchange.margin(trade_date) if r["stock_id"] in known]
+    result.counts["margin"] = repo.upsert_chips(margin)
+    _merge(result.quality, check_chips(margin, ids, "融資融券"))
+
+    # 3. 交易狀態（處置、注意）
+    try:
+        repo.set_status_flags(exchange.status_flags())
+    except Exception as e:  # 公告格式異動不影響主流程
+        result.quality.warnings.append(f"處置／注意股抓取失敗：{e}")
+
+    # 4. FinMind：自選股財報與月營收（只在可能有新資料時抓）
+    before = finmind.quota.calls_this_hour
+    result.counts["financials"] = refresh_financials(repo, finmind, ids, trade_date)
+    result.counts["shareholding"] = refresh_shareholding(repo, finmind, ids, trade_date)
+    result.finmind_calls = finmind.quota.calls_this_hour - before
+
+    # 5. 跳空檢查（警告）
+    yesterday = _previous_closes(repo, ids, trade_date)
+    today = {r["stock_id"]: r["close"] for r in prices if r["stock_id"] in set(ids)}
+    result.quality.warnings.extend(check_price_jumps(today, yesterday))
+    return result
+
+
+def _merge(target: QualityReport, other: QualityReport) -> None:
+    target.errors.extend(other.errors)
+    target.warnings.extend(other.warnings)
+
+
+def _previous_closes(repo: Repository, ids: list[str], trade_date: date) -> dict[str, float]:
+    if not ids:
+        return {}
+    with repo.conn.cursor() as cur:
+        cur.execute(
+            "SELECT DISTINCT ON (stock_id) stock_id, close FROM daily_prices "
+            "WHERE stock_id = ANY(%s) AND date < %s ORDER BY stock_id, date DESC",
+            (ids, trade_date),
+        )
+        return {s: float(c) for s, c in cur.fetchall() if c is not None}
+
+
+def expected_revenue_period(today: date) -> str:
+    """今天應該已經能取得的最新月營收期別（上個月）。"""
+    first = today.replace(day=1)
+    prev = first - timedelta(days=1)
+    return f"{prev.year:04d}-{prev.month:02d}"
+
+
+def expected_quarter_period(today: date) -> str:
+    """依法定期限推算今天應已公布的最新季別。"""
+    y = today.year
+    deadlines = [(date(y, 3, 31), f"{y - 1}Q4"), (date(y, 5, 15), f"{y}Q1"),
+                 (date(y, 8, 14), f"{y}Q2"), (date(y, 11, 14), f"{y}Q3")]
+    latest = f"{y - 1}Q3"
+    for deadline, period in deadlines:
+        if today >= deadline:
+            latest = period
+    return latest
+
+
+def refresh_financials(repo: Repository, finmind: FinMindClient, ids: list[str], today: date) -> int:
+    count = 0
+    want_month = expected_revenue_period(today)
+    want_quarter = expected_quarter_period(today)
+    for sid in ids:
+        if (repo.latest_period(sid, "month") or "") < want_month:
+            rows = finmind.fetch("month_revenue", sid, today - timedelta(days=120))
+            count += repo.upsert("financials", fm.parse_month_revenue(rows))
+        if (repo.latest_period(sid, "quarter") or "") < want_quarter:
+            rows = finmind.fetch("income_statement", sid, today - timedelta(days=400))
+            rows += finmind.fetch("balance_sheet", sid, today - timedelta(days=400))
+            count += repo.upsert("financials", fm.parse_statements(rows))
+    return count
+
+
+def refresh_shareholding(repo: Repository, finmind: FinMindClient, ids: list[str], today: date) -> int:
+    """外資持股比例：免費模式每週一更新即可。"""
+    if today.weekday() != 0:
+        return 0
+    count = 0
+    for sid in ids:
+        rows = finmind.fetch("shareholding", sid, today - timedelta(days=10))
+        count += repo.upsert_chips(fm.parse_shareholding(rows))
+    return count
+
+
+def backfill(repo: Repository, finmind: FinMindClient, ids: list[str], years: int, today: date) -> dict[str, int]:
+    """新加入的自選股回補歷史資料（股價、估值、法人、融資券、財報、月營收）。"""
+    start = today.replace(year=today.year - years)
+    counts = {k: 0 for k in ("prices", "valuations", "institutional", "margin", "financials")}
+    for sid in ids:
+        counts["prices"] += repo.upsert("daily_prices", fm.parse_prices(finmind.fetch("price", sid, start)))
+        counts["valuations"] += repo.upsert("valuations", fm.parse_per(finmind.fetch("per", sid, start)))
+        counts["institutional"] += repo.upsert_chips(
+            fm.parse_institutional(finmind.fetch("institutional", sid, start))
+        )
+        counts["margin"] += repo.upsert_chips(fm.parse_margin(finmind.fetch("margin", sid, start)))
+        counts["financials"] += repo.upsert(
+            "financials", fm.parse_month_revenue(finmind.fetch("month_revenue", sid, start))
+        )
+        statements = finmind.fetch("income_statement", sid, start) + finmind.fetch("balance_sheet", sid, start)
+        counts["financials"] += repo.upsert("financials", fm.parse_statements(statements))
+        repo.conn.commit()
+        log.info("已回補 %s", sid)
+    return counts
