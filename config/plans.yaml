@@ -1,0 +1,44 @@
+# 方案模式與功能開關
+# 程式各處只檢查 feature flag，不直接判斷方案名稱。
+# 升級 FinMind 方案後，只要改環境變數 PLAN 即可解鎖。
+
+features:
+  full_market_scan: 全市場掃描（上市＋上櫃）
+  market_percentile: 全市場同產業百分位與大小型股分組
+  top_percent_list: 全市場短線／中長線前 5% 名單
+  market_wide_groups: 以全市場計算族群強弱
+  broker_branches: 券商分點籌碼
+  finmind_realtime: FinMind 即時報價（盤中停損）
+  full_backtest: 全市場多年回測
+
+plans:
+  free:
+    label: 免費模式
+    universe: watchlist
+    watchlist_limit: 100
+    features: []
+
+  sponsor:
+    label: Sponsor
+    universe: market
+    watchlist_limit: null
+    features:
+      - full_market_scan
+      - market_percentile
+      - top_percent_list
+      - market_wide_groups
+      - full_backtest
+    # 待確認：分點與即時報價是否包含在 Sponsor，確認後加入上方清單
+
+  pro:
+    label: Sponsor Pro
+    universe: market
+    watchlist_limit: null
+    features:
+      - full_market_scan
+      - market_percentile
+      - top_percent_list
+      - market_wide_groups
+      - broker_branches
+      - finmind_realtime
+      - full_backtest

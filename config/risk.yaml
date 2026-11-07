@@ -1,0 +1,40 @@
+# 交易與風控規則（初始值，回測後調整）
+
+position:
+  risk_per_trade: 0.015        # 每筆最大虧損佔總資金比例
+  max_position_pct: 0.12       # 單檔上限
+  max_holdings: 8              # 持股檔數上限
+  max_group_pct: 0.30          # 單一族群上限
+  lot_size: 1000               # 一張股數
+
+stop_loss:
+  method: percent              # percent / ma60
+  percent: 0.08
+  bearish_market_percent: 0.05 # 大盤燈號偏空時收緊
+
+take_profit:
+  trailing_percent: 0.10       # 移動停利回落幅度
+
+exit:
+  max_holding_days_no_gain: 20 # 持有超過此交易日數未上漲則提醒換股
+
+entry_conditions:
+  - above_ma60                 # 站上季線
+  - ma_golden_cross            # 均線黃金交叉
+  - volume_breakout_20d        # 帶量突破 20 日高點
+  - institutional_buy_streak   # 法人連續買超
+institutional_buy_streak_days: 3
+volume_breakout_ratio: 1.5
+
+costs:
+  commission_rate: 0.001425    # 手續費
+  commission_discount: 1.0     # 券商折扣
+  min_commission: 20
+  tax_rate: 0.003              # 證交稅（賣出）
+
+liquidity:
+  min_avg_volume_lots: 500     # 20 日均量低於此張數排除
+  exclude_status:
+    - disposition              # 處置
+    - attention                # 注意
+    - full_delivery            # 全額交割

@@ -1,0 +1,48 @@
+# 評分權重與門檻（初始值，回測後調整）
+
+weights:
+  short:          # 短線
+    fundamental: 0.15
+    technical: 0.50
+    chips: 0.35
+  long:           # 中長線
+    fundamental: 0.60
+    technical: 0.15
+    chips: 0.25
+
+# 各面向內指標權重；同一面向內加總需為 1
+indicators:
+  fundamental:
+    revenue_growth: 0.30        # 月營收年增率、連續成長、創新高（權重最高）
+    eps_growth: 0.15
+    margin_trend: 0.15
+    roe: 0.10
+    valuation_position: 0.15    # 本益比、淨值比相對歷史位置
+    balance_sheet: 0.10         # 負債比、自由現金流
+    dividend: 0.05              # 只計入中長線
+  technical:
+    ma_alignment: 0.35
+    momentum: 0.25
+    volume_ratio: 0.20
+    breakout: 0.20
+  chips:
+    foreign_net: 0.20
+    trust_net: 0.20
+    foreign_holding_change: 0.10
+    margin: 0.15                # 融資大增反向扣分
+    major_holders: 0.15
+    broker_branches: 0.20       # 受 feature flag 控制；停用時平均分給其他籌碼指標
+
+# 只計入中長線的指標
+long_only_indicators:
+  - dividend
+
+momentum_indicator: rsi         # rsi / kd / macd，回測決定
+
+missing_value_score: 50          # 缺值以中性分處理
+min_history_days: 240            # 資料不足此天數不評分
+min_industry_size: 10            # 付費模式：產業少於此檔數改與全市場比較
+
+selection:
+  top_percent: 0.05              # 付費模式入選門檻
+  per_group_top_n: 3             # 免費模式每個族群列出前幾名

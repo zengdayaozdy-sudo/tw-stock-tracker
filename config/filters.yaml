@@ -1,0 +1,31 @@
+# 濾網設定
+
+news:
+  confidence_threshold: 0.7
+  negative_event_types:
+    - 財測下修
+    - 處置
+    - 董監大量申報轉讓
+    - 重大訴訟
+    - 現金增資
+    - 虧損擴大
+    - 停工或重大災害
+
+market_light:
+  # 每項輸入給 +1 偏多 / 0 中性 / -1 偏空，加總判斷
+  bullish_threshold: 2
+  bearish_threshold: -2
+  inputs:
+    - taiex_vs_ma60
+    - sox_trend
+    - tsmc_adr_premium
+    - foreign_futures_oi
+    - twd_trend
+
+group_strength:
+  lookback_days: [20, 60]
+  weak_bottom_pct: 0.3         # 排名後 30% 視為弱勢
+
+events:
+  warn_days_before: 2
+  warn_days_after: 1
