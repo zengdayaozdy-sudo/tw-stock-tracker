@@ -178,3 +178,41 @@ def parse_shareholding(rows: list[dict]) -> list[dict]:
         }
         for r in rows
     ]
+
+
+# ---------- 大盤燈號輸入（第 4 階段） ----------
+
+def parse_us_close(rows: list[dict], series: str) -> list[dict]:
+    """美股收盤（USStockPrice）。日期為美國交易日。"""
+    return [
+        {"series": series, "date": date.fromisoformat(r["date"]), "value": to_number(r.get("Close"))}
+        for r in rows
+        if to_number(r.get("Close"))
+    ]
+
+
+def parse_exchange_rate(rows: list[dict]) -> list[dict]:
+    """美元兌台幣：取即期買賣中價（缺一邊時用另一邊）。"""
+    out = []
+    for r in rows:
+        quotes = [q for q in (to_number(r.get("spot_buy")), to_number(r.get("spot_sell"))) if q and q > 0]
+        if quotes:
+            out.append({"series": "usd_twd", "date": date.fromisoformat(r["date"]), "value": sum(quotes) / len(quotes)})
+    return out
+
+
+FOREIGN_FUTURES_NAMES = {"外資", "外資及陸資"}
+
+
+def parse_foreign_futures_oi(rows: list[dict]) -> list[dict]:
+    """外資台指期淨未平倉口數 = 多方未平倉 − 空方未平倉。"""
+    out = []
+    for r in rows:
+        if r.get("institutional_investors") not in FOREIGN_FUTURES_NAMES:
+            continue
+        long_oi = to_int(r.get("long_open_interest_balance_volume"))
+        short_oi = to_int(r.get("short_open_interest_balance_volume"))
+        if long_oi is None or short_oi is None:
+            continue
+        out.append({"series": "foreign_tx_oi", "date": date.fromisoformat(r["date"]), "value": long_oi - short_oi})
+    return out

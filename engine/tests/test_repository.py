@@ -89,7 +89,9 @@ class FakeExchange:
     def margin(self, d):
         return [{"stock_id": s, "date": d, "margin_balance": 10, "short_balance": 1} for s in ("2330", "2317")]
 
-    def status_flags(self):
+    last_errors: list = []
+
+    def status_flags(self, d=None):
         return {"2317": {"attention"}}
 
 

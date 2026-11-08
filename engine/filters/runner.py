@@ -1,0 +1,275 @@
+"""濾網步驟與資料庫串接（第 4 節步驟 3、4、6）。每個步驟可單獨執行、重跑結果一致。"""
+
+from __future__ import annotations
+
+import logging
+from datetime import date, datetime, time, timedelta
+from typing import Any
+
+import pandas as pd
+
+from engine.config import TZ, Settings
+from engine.filters.events import TradingCalendar, event_flags, statutory_events
+from engine.filters.groups import group_strength, weak_group_flags
+from engine.filters.liquidity import AVG_DAYS, liquidity_flags
+from engine.filters.market_light import MarketLight, compute_light
+from engine.filters.news import dedup_key, news_flags, parse_rss
+from engine.pipeline import universe
+from engine.repository import Repository
+from engine.scoring.loader import load_groups
+from engine.sources import finmind as fm
+
+log = logging.getLogger(__name__)
+
+# (series, FinMind 資料集鍵, data_id, 解析函式)
+FINMIND_SERIES = [
+    ("sox", "us_price", "^SOX", lambda rows: fm.parse_us_close(rows, "sox")),
+    ("tsm_adr", "us_price", "TSM", lambda rows: fm.parse_us_close(rows, "tsm_adr")),
+    ("usd_twd", "exchange_rate", "USD", fm.parse_exchange_rate),
+    ("foreign_tx_oi", "futures_institutional", "TX", fm.parse_foreign_futures_oi),
+]
+
+
+def _day_end(d: date) -> datetime:
+    return datetime.combine(d, time(23, 59, 59), tzinfo=TZ)
+
+
+def _day_start(d: date) -> datetime:
+    return datetime.combine(d, time(0), tzinfo=TZ)
+
+
+# ---------- 步驟 3：流動性 ----------
+
+def run_liquidity(settings: Settings, repo: Repository, as_of: date) -> dict[str, Any]:
+    ids = universe(settings, repo)
+    cfg = {**settings.risk["liquidity"], "lot_size": settings.risk["position"]["lot_size"]}
+    flags = liquidity_flags(ids, repo.avg_volume(ids, as_of, AVG_DAYS), repo.stock_status(ids), cfg)
+    repo.replace_flags(as_of, "liquidity", flags)
+    repo.conn.commit()
+    excluded = sorted({f["stock_id"] for f in flags})
+    return {"universe": len(ids), "excluded": len(excluded), "flags": flags}
+
+
+# ---------- 步驟 4：消息面排雷 ----------
+
+def collect_news(settings: Settings, repo: Repository, exchange, http, ids: list[str]) -> dict[str, Any]:
+    wanted = set(ids)
+    items: list[dict] = []
+    errors: list[str] = []
+    try:
+        items += [a for a in exchange.announcements() if a["stock_id"] in wanted]
+    except Exception as e:
+        errors.append(f"重大訊息抓取失敗：{e}")
+    for template in settings.filters["news"].get("rss_feeds") or []:
+        for sid in ids:
+            url = template.format(stock_id=sid)
+            try:
+                items += parse_rss(http.get_text(url), sid, "rss")
+            except Exception as e:
+                errors.append(f"RSS 抓取失敗 {url}：{e}")
+    for it in items:
+        it["dedup_key"] = dedup_key(it)
+    repo.insert_news(items)
+    repo.conn.commit()
+    return {"collected": len(items), "errors": errors}
+
+
+def judge_news(settings: Settings, repo: Repository, judge, ids: list[str], as_of: date) -> dict[str, Any]:
+    cfg = settings.filters["news"]
+    since = _day_start(as_of - timedelta(days=cfg["lookback_days"]))
+    pending = repo.unjudged_news(ids, since, cfg["max_judgments_per_run"])
+    by: dict[str, int] = {}
+    for i, item in enumerate(pending, start=1):
+        j = judge.judge(item)
+        repo.save_judgment(item["news_id"], j.to_dict())
+        by[j.judged_by] = by.get(j.judged_by, 0) + 1
+        if i % 20 == 0:
+            repo.conn.commit()
+    repo.conn.commit()
+    return {"judged": len(pending), "judged_by": by, "ai_errors": judge.errors[:5]}
+
+
+def run_news(settings: Settings, repo: Repository, exchange, http, judge, as_of: date,
+             collect: bool = True) -> dict[str, Any]:
+    ids = universe(settings, repo)
+    cfg = settings.filters["news"]
+    out: dict[str, Any] = {"universe": len(ids)}
+    if collect:
+        out.update(collect_news(settings, repo, exchange, http, ids))
+    out.update(judge_news(settings, repo, judge, ids, as_of))
+    since = _day_start(as_of - timedelta(days=cfg["lookback_days"]))
+    flags = news_flags(repo.negative_news(ids, since, _day_end(as_of)), cfg)
+    repo.replace_flags(as_of, "news", flags)
+    repo.conn.commit()
+    out["excluded"] = len({f["stock_id"] for f in flags})
+    out["flags"] = flags
+    return out
+
+
+# ---------- 步驟 6：大盤燈號 ----------
+
+def refresh_market_series(settings: Settings, repo: Repository, exchange, finmind, as_of: date) -> dict[str, Any]:
+    history = settings.filters["market_light"]["history_days"]
+    counts: dict[str, int] = {}
+    errors: list[str] = []
+
+    def start_for(series: str) -> date:
+        latest = repo.latest_series_date(series)
+        floor = as_of - timedelta(days=history)
+        if latest is None or latest < floor:
+            return floor
+        return min(latest - timedelta(days=7), as_of - timedelta(days=7))
+
+    # 加權指數：證交所，一次一個月
+    try:
+        start = start_for("taiex")
+        month = start.replace(day=1)
+        rows: list[dict] = []
+        while month <= as_of:
+            rows += [r for r in exchange.taiex_month(month) if r["date"] <= as_of]
+            month = (month + timedelta(days=32)).replace(day=1)
+        counts["taiex"] = repo.upsert("market_series", rows)
+    except Exception as e:
+        errors.append(f"加權指數抓取失敗：{e}")
+
+    for series, dataset, data_id, parse in FINMIND_SERIES:
+        try:
+            rows = parse(finmind.fetch(dataset, data_id, start_for(series), as_of))
+            counts[series] = repo.upsert("market_series", [r for r in rows if r["date"] <= as_of])
+        except Exception as e:
+            errors.append(f"{series} 抓取失敗：{e}")
+    repo.conn.commit()
+    return {"counts": counts, "errors": errors}
+
+
+def compute_market_light(settings: Settings, repo: Repository, as_of: date) -> MarketLight:
+    cfg = settings.filters["market_light"]
+    start = as_of - timedelta(days=cfg["history_days"])
+    series: dict[str, Any] = {
+        name: repo.series(name, start, as_of) for name in ("taiex", "sox", "tsm_adr", "usd_twd", "foreign_tx_oi")
+    }
+    series["tw2330"] = [(d, c) for _s, d, c in repo.closes(["2330"], start, as_of)]
+    return compute_light(series, as_of, cfg)
+
+
+# ---------- 步驟 6：族群強弱 ----------
+
+def compute_group_strength(settings: Settings, repo: Repository, as_of: date) -> tuple[list[dict], set[str]]:
+    cfg = settings.filters["group_strength"]
+    scope = set(repo.all_stock_ids() if settings.enabled("market_wide_groups") else universe(settings, repo))
+    days = max(cfg["lookback_days"])
+    start = as_of - timedelta(days=int(days * 1.6) + 20)
+    raw = repo.closes(sorted(scope), start, as_of)
+    closes: dict[str, pd.Series] = {}
+    if raw:
+        df = pd.DataFrame(raw, columns=["stock_id", "date", "close"])
+        df["date"] = pd.to_datetime(df["date"])
+        closes = {sid: g.set_index("date")["close"].sort_index() for sid, g in df.groupby("stock_id")}
+    taiex_pts = repo.series("taiex", start, as_of)
+    taiex = pd.Series({pd.Timestamp(d): v for d, v in taiex_pts}, dtype=float).sort_index()
+    scores = repo.score_totals(as_of, cfg["score_horizon"])
+    groups = load_groups(repo)
+    return group_strength(groups, scope, closes, taiex, scores, as_of, cfg), scope
+
+
+# ---------- 事件行事曆 ----------
+
+def refresh_events(settings: Settings, repo: Repository, exchange, as_of: date) -> dict[str, Any]:
+    keep = as_of - timedelta(days=settings.filters["events"]["keep_past_days"])
+    known = repo.known_stock_ids()
+    rows: list[dict] = []
+    errors: list[str] = []
+    for label, fn in (("除權息", exchange.ex_dividend_events), ("股東會", exchange.shareholder_meetings)):
+        try:
+            rows += [{**r, "source": "auto"} for r in fn() if r["stock_id"] in known and r["date"] >= keep]
+        except Exception as e:
+            errors.append(f"{label}抓取失敗：{e}")
+    # 同一天同類事件（例如同時除權與除息）合併成一筆
+    merged: dict[tuple, dict] = {}
+    for r in rows:
+        merged.setdefault((r["stock_id"], r["date"], r["event_type"]), r)
+    n = repo.upsert("events", merged.values())
+    repo.conn.commit()
+    return {"events": n, "errors": errors}
+
+
+def trading_calendar(exchange) -> tuple[TradingCalendar, str | None]:
+    try:
+        return TradingCalendar(exchange.holidays()), None
+    except Exception as e:
+        return TradingCalendar(), f"休市日抓取失敗，只排除週末：{e}"
+
+
+def compute_event_flags(settings: Settings, repo: Repository, ids: list[str], as_of: date,
+                        cal: TradingCalendar) -> list[dict]:
+    cfg = settings.filters["events"]
+    stored = repo.events_between(ids, as_of - timedelta(days=15), as_of + timedelta(days=20))
+    implied = statutory_events(ids, repo.financial_periods(ids, as_of), as_of)
+    return event_flags(stored + implied, as_of, cal, cfg)
+
+
+# ---------- 步驟 6 整合 ----------
+
+def run_filters(settings: Settings, repo: Repository, exchange, finmind, as_of: date,
+                refresh: bool = True) -> dict[str, Any]:
+    """大盤燈號、族群強弱、事件行事曆，寫入 market 與 screen_flags。"""
+    out: dict[str, Any] = {"warnings": []}
+    ids = universe(settings, repo)
+
+    if refresh:
+        series = refresh_market_series(settings, repo, exchange, finmind, as_of)
+        out["series"] = series["counts"]
+        out["warnings"] += series["errors"]
+        ev = refresh_events(settings, repo, exchange, as_of)
+        out["events_saved"] = ev["events"]
+        out["warnings"] += ev["errors"]
+        cal, err = trading_calendar(exchange)
+        if err:
+            out["warnings"].append(err)
+    else:
+        cal = TradingCalendar()
+
+    light = compute_market_light(settings, repo, as_of)
+    strength, scope = compute_group_strength(settings, repo, as_of)
+    repo.upsert("market", [{
+        "date": as_of, "light": light.light, "inputs": light.to_inputs_json(), "group_strength": strength,
+    }])
+
+    market_rows = []
+    if light.light == "bearish":
+        market_rows = [{"stock_id": sid, "kind": "block", "reason": "大盤燈號偏空",
+                        "detail": {"total": light.total}} for sid in ids]
+    repo.replace_flags(as_of, "market", market_rows)
+
+    group_rows = [f for f in weak_group_flags(strength, scope) if f["stock_id"] in set(ids)]
+    repo.replace_flags(as_of, "group", group_rows)
+
+    event_rows = compute_event_flags(settings, repo, ids, as_of, cal)
+    repo.replace_flags(as_of, "event", event_rows)
+
+    excluded = {sid for sid, fl in repo.flags(as_of).items() if any(f["kind"] == "exclude" for f in fl)}
+    out["scores_marked_excluded"] = repo.mark_excluded_scores(as_of, excluded)
+    repo.conn.commit()
+
+    out.update({
+        "light": light.light,
+        "light_label": light.label,
+        "light_total": light.total,
+        "light_inputs": light.inputs,
+        "groups_ranked": sum(1 for g in strength if g["rank"] is not None),
+        "weak_groups": [g["name"] for g in strength if g["weak"]],
+        "blocked_by_group": len(group_rows),
+        "event_warnings": len(event_rows),
+        "excluded_total": len(excluded),
+    })
+    return out
+
+
+def screen_summary(repo: Repository, as_of: date) -> dict[str, dict[str, list[str]]]:
+    """每檔股票當日的排除、擋買進、提示理由（第 5 階段訊號使用）。"""
+    out: dict[str, dict[str, list[str]]] = {}
+    for sid, flags in repo.flags(as_of).items():
+        entry = out.setdefault(sid, {"exclude": [], "block": [], "warn": []})
+        for f in flags:
+            entry[f["kind"]].append(f["reason"])
+    return out

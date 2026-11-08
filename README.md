@@ -12,12 +12,22 @@ python -m engine.cli migrate  # 建立資料表（需 DATABASE_URL）
 pytest -q
 ```
 
+每日流程（每一步都可加 `--date YYYY-MM-DD` 補跑）：
+
+```bash
+python -m engine.cli fetch        # 抓資料＋完整性檢查
+python -m engine.cli liquidity    # 流動性過濾
+python -m engine.cli news         # 消息面排雷（AI 判讀，連不上時改用關鍵字）
+python -m engine.cli score        # 三面向評分
+python -m engine.cli filters      # 大盤燈號、族群強弱、事件行事曆
+```
+
 ## 開發進度
 
 - [x] 1. 專案骨架、設定檔、方案開關、資料庫結構
 - [x] 2. 資料來源、額度管理、完整性檢查
 - [x] 3. 評分引擎
-- [ ] 4. 濾網
+- [x] 4. 濾網（流動性、消息面排雷、大盤燈號、族群強弱、事件行事曆）
 - [ ] 5. 訊號與風控
 - [ ] 6. LINE 報告
 - [ ] 7. 持股追蹤與交易日誌
@@ -48,6 +58,7 @@ pytest -q
 ## 交給 Claude Code 接手
 
 1. 用 Claude Code 開啟本 repo
-2. 指示：「讀 CLAUDE.md、README.md、docs/open-questions.md，從第 14 節第 4 階段開始開發」
-3. 第 6 階段（LINE）前，擁有者需在 GitHub Secrets 加上 `LINE_CHANNEL_ACCESS_TOKEN`、`LINE_OWNER_USER_ID`
-4. 第 9 階段（網站）前，在 Vercel 匯入本 repo，Root Directory 設為 `web`，並設定 `DATABASE_URL`、`SITE_PASSWORD`、`SESSION_SECRET`
+2. 指示：「讀 CLAUDE.md、README.md、docs/open-questions.md，從第 14 節第 5 階段開始開發」
+3. 消息面 AI 判讀：GitHub Actions 連不到本機 Ollama，需擇一（見 docs/open-questions.md #13）；未設定時以關鍵字判讀
+4. 第 6 階段（LINE）前，擁有者需在 GitHub Secrets 加上 `LINE_CHANNEL_ACCESS_TOKEN`、`LINE_OWNER_USER_ID`
+5. 第 9 階段（網站）前，在 Vercel 匯入本 repo，Root Directory 設為 `web`，並設定 `DATABASE_URL`、`SITE_PASSWORD`、`SESSION_SECRET`

@@ -97,11 +97,12 @@ def fetch_daily(
     result.counts["margin"] = repo.upsert_chips(margin)
     _merge(result.quality, check_chips(margin, ids, "融資融券"))
 
-    # 3. 交易狀態（處置、注意）
+    # 3. 交易狀態（處置、注意、全額交割）
     try:
-        repo.set_status_flags(exchange.status_flags())
+        repo.set_status_flags(exchange.status_flags(trade_date))
+        result.quality.warnings.extend(f"交易狀態部分抓取失敗：{e}" for e in exchange.last_errors)
     except Exception as e:  # 公告格式異動不影響主流程
-        result.quality.warnings.append(f"處置／注意股抓取失敗：{e}")
+        result.quality.warnings.append(f"處置／注意／全額交割股抓取失敗：{e}")
 
     # 4. FinMind：自選股財報與月營收（只在可能有新資料時抓）
     before = finmind.quota.calls_this_hour

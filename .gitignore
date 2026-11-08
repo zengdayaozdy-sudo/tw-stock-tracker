@@ -11,3 +11,4 @@ node_modules/
 .vercel/
 data/cache/
 *.log
+*.egg-info/

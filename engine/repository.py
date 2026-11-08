@@ -13,6 +13,9 @@ UPSERT_SPECS: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
     "valuations": (("stock_id", "date"), ("pe", "pb", "dividend_yield")),
     "financials": (("stock_id", "period_type", "period"), ("published_date", "metrics")),
     "scores": (("stock_id", "date", "horizon"), ("total", "fundamental", "technical", "chips", "breakdown", "status")),
+    "market_series": (("series", "date"), ("value",)),
+    "market": (("date",), ("light", "inputs", "group_strength")),
+    "events": (("stock_id", "date", "event_type"), ("note", "source")),
 }
 
 # chips 由多個來源分批寫入，只更新本次有提供的欄位
@@ -151,3 +154,157 @@ class Repository:
             cur.execute("SELECT calls FROM api_usage WHERE provider = %s AND hour = %s", (provider, hour))
             row = cur.fetchone()
             return row[0] if row else 0
+
+    # ---------- 濾網（第 4 階段） ----------
+    def replace_flags(self, on_date: date, filter_name: str, rows: Iterable[dict]) -> int:
+        """覆寫某一濾網在某日的結果（重跑同一步驟不會殘留舊資料）。"""
+        rows = list(rows)
+        with self.conn.cursor() as cur:
+            cur.execute("DELETE FROM screen_flags WHERE date = %s AND filter = %s", (on_date, filter_name))
+            cur.executemany(
+                "INSERT INTO screen_flags (stock_id, date, filter, kind, reason, detail) "
+                "VALUES (%s, %s, %s, %s, %s, %s) ON CONFLICT DO NOTHING",
+                [
+                    (r["stock_id"], on_date, filter_name, r["kind"], r["reason"], _adapt(r.get("detail") or {}))
+                    for r in rows
+                ],
+            )
+        return len(rows)
+
+    def flags(self, on_date: date) -> dict[str, list[dict]]:
+        with self.conn.cursor() as cur:
+            cur.execute(
+                "SELECT stock_id, filter, kind, reason, detail FROM screen_flags WHERE date = %s "
+                "ORDER BY stock_id, filter, reason",
+                (on_date,),
+            )
+            out: dict[str, list[dict]] = {}
+            for sid, f, kind, reason, detail in cur.fetchall():
+                out.setdefault(sid, []).append({"filter": f, "kind": kind, "reason": reason, "detail": detail})
+            return out
+
+    def series(self, name: str, start: date, end: date) -> list[tuple[date, float]]:
+        with self.conn.cursor() as cur:
+            cur.execute(
+                "SELECT date, value FROM market_series WHERE series = %s AND date BETWEEN %s AND %s ORDER BY date",
+                (name, start, end),
+            )
+            return [(d, float(v)) for d, v in cur.fetchall()]
+
+    def latest_series_date(self, name: str) -> date | None:
+        with self.conn.cursor() as cur:
+            cur.execute("SELECT max(date) FROM market_series WHERE series = %s", (name,))
+            return cur.fetchone()[0]
+
+    def closes(self, ids: list[str], start: date, end: date) -> list[tuple[str, date, float]]:
+        if not ids:
+            return []
+        with self.conn.cursor() as cur:
+            cur.execute(
+                "SELECT stock_id, date, close FROM daily_prices "
+                "WHERE stock_id = ANY(%s) AND date BETWEEN %s AND %s AND close IS NOT NULL ORDER BY date",
+                (ids, start, end),
+            )
+            return [(s, d, float(c)) for s, d, c in cur.fetchall()]
+
+    def insert_news(self, rows: Iterable[dict]) -> int:
+        """新增新聞與重大訊息；已存在（同一去重鍵）者略過，不會覆寫既有判讀。"""
+        rows = list(rows)
+        with self.conn.cursor() as cur:
+            cur.executemany(
+                "INSERT INTO news (stock_id, published_at, source, title, url, body, dedup_key) "
+                "VALUES (%s, %s, %s, %s, %s, %s, %s) ON CONFLICT DO NOTHING",
+                [
+                    (r["stock_id"], r["published_at"], r["source"], r["title"], r.get("url"), r.get("body"),
+                     r["dedup_key"])
+                    for r in rows
+                ],
+            )
+        return len(rows)
+
+    def unjudged_news(self, ids: list[str], since: datetime, limit: int) -> list[dict]:
+        with self.conn.cursor() as cur:
+            cur.execute(
+                "SELECT news_id, stock_id, published_at, source, title, body, url FROM news "
+                "WHERE stock_id = ANY(%s) AND published_at >= %s AND is_major_negative IS NULL "
+                "ORDER BY published_at DESC LIMIT %s",
+                (ids, since, limit),
+            )
+            cols = ("news_id", "stock_id", "published_at", "source", "title", "body", "url")
+            return [dict(zip(cols, r, strict=True)) for r in cur.fetchall()]
+
+    def save_judgment(self, news_id: int, j: dict) -> None:
+        with self.conn.cursor() as cur:
+            cur.execute(
+                "UPDATE news SET is_major_negative = %s, event_type = %s, confidence = %s, summary = %s, "
+                "judged_by = %s, judged_at = now() WHERE news_id = %s",
+                (j["is_major_negative"], j.get("event_type"), j.get("confidence"), j.get("summary"),
+                 j.get("judged_by"), news_id),
+            )
+
+    def negative_news(self, ids: list[str], since: datetime, until: datetime) -> list[dict]:
+        with self.conn.cursor() as cur:
+            cur.execute(
+                "SELECT news_id, stock_id, published_at, title, url, event_type, confidence, summary, judged_by "
+                "FROM news WHERE stock_id = ANY(%s) AND published_at BETWEEN %s AND %s "
+                "AND is_major_negative ORDER BY published_at",
+                (ids, since, until),
+            )
+            cols = ("news_id", "stock_id", "published_at", "title", "url", "event_type", "confidence", "summary",
+                    "judged_by")
+            return [dict(zip(cols, r, strict=True)) for r in cur.fetchall()]
+
+    def events_between(self, ids: list[str], start: date, end: date) -> list[dict]:
+        with self.conn.cursor() as cur:
+            cur.execute(
+                "SELECT stock_id, date, event_type, note FROM events "
+                "WHERE stock_id = ANY(%s) AND date BETWEEN %s AND %s ORDER BY date",
+                (ids, start, end),
+            )
+            return [dict(zip(("stock_id", "date", "event_type", "note"), r, strict=True)) for r in cur.fetchall()]
+
+    def stock_status(self, ids: list[str]) -> dict[str, list[str]]:
+        with self.conn.cursor() as cur:
+            cur.execute("SELECT stock_id, status FROM stocks WHERE stock_id = ANY(%s)", (ids,))
+            return {s: list(st or []) for s, st in cur.fetchall()}
+
+    def avg_volume(self, ids: list[str], as_of: date, days: int) -> dict[str, tuple[float, int]]:
+        """近 N 個交易日（含當日）平均成交股數與實際筆數。"""
+        with self.conn.cursor() as cur:
+            cur.execute(
+                "SELECT stock_id, avg(volume), count(*) FROM ("
+                " SELECT stock_id, volume, row_number() OVER (PARTITION BY stock_id ORDER BY date DESC) AS rn"
+                " FROM daily_prices WHERE stock_id = ANY(%s) AND date <= %s"
+                ") t WHERE rn <= %s GROUP BY stock_id",
+                (ids, as_of, days),
+            )
+            return {s: (float(v or 0), int(n)) for s, v, n in cur.fetchall()}
+
+    def financial_periods(self, ids: list[str], as_of: date) -> dict[tuple[str, str], str]:
+        """每檔在 as_of 當天已公布的最新期別 {(stock_id, period_type): period}。"""
+        with self.conn.cursor() as cur:
+            cur.execute(
+                "SELECT stock_id, period_type, max(period) FROM financials "
+                "WHERE stock_id = ANY(%s) AND published_date <= %s GROUP BY 1, 2",
+                (ids, as_of),
+            )
+            return {(s, t): p for s, t, p in cur.fetchall()}
+
+    def score_totals(self, on_date: date, horizon: str) -> dict[str, float]:
+        with self.conn.cursor() as cur:
+            cur.execute(
+                "SELECT stock_id, total FROM scores WHERE date = %s AND horizon = %s AND status <> 'insufficient_data' "
+                "AND total IS NOT NULL",
+                (on_date, horizon),
+            )
+            return {s: float(t) for s, t in cur.fetchall()}
+
+    def mark_excluded_scores(self, on_date: date, ids: Iterable[str]) -> int:
+        """依當日排除結果更新 scores.status（先還原再標記，重跑結果一致）。"""
+        with self.conn.cursor() as cur:
+            cur.execute("UPDATE scores SET status = 'ok' WHERE date = %s AND status = 'excluded'", (on_date,))
+            cur.execute(
+                "UPDATE scores SET status = 'excluded' WHERE date = %s AND stock_id = ANY(%s) AND status = 'ok'",
+                (on_date, list(ids)),
+            )
+            return cur.rowcount

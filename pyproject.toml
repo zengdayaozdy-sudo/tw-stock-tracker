@@ -12,6 +12,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8", "ruff>=0.6"]
+claude = ["anthropic>=1.0"]   # AI_PROVIDER=claude 時才需要
 
 [tool.pytest.ini_options]
 testpaths = ["engine/tests"]

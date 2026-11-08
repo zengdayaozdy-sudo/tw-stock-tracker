@@ -7,14 +7,14 @@
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
-from datetime import date
+from dataclasses import dataclass, field
+from datetime import date, datetime, time
 from functools import lru_cache
 from typing import Any
 
 import yaml
 
-from engine.config import CONFIG_DIR, Settings
+from engine.config import CONFIG_DIR, TZ, Settings
 from engine.sources.common import HttpClient, SourceError, parse_tw_date, pick, to_int, to_number
 
 
@@ -78,6 +78,7 @@ def _is_common_stock(code: str | None) -> bool:
 class ExchangeClient:
     settings: Settings
     http: HttpClient
+    last_errors: list[str] = field(default_factory=list)
 
     def _url(self, market: str, key: str, **fmt: str) -> str:
         url = self.settings.sources[market]["endpoints"][key]
@@ -230,12 +231,166 @@ class ExchangeClient:
                 )
         return out
 
-    def status_flags(self) -> dict[str, set[str]]:
-        """回傳 {stock_id: {'disposition', 'attention'}}。全額交割股由公司資料或公告補充。"""
+    def status_flags(self, trade_date: date | None = None) -> dict[str, set[str]]:
+        """回傳 {stock_id: {'disposition', 'attention', 'full_delivery'}}。
+
+        處置股只計入處置期間涵蓋 trade_date 者；任一來源失敗不影響其他來源。
+        """
         flags: dict[str, set[str]] = {}
-        for key, flag in (("disposition", "disposition"), ("attention", "attention")):
-            for r in _rows(self.raw("twse", key)):
-                code = str(pick(r, "Code", "證券代號") or "").strip()
-                if _is_common_stock(code):
-                    flags.setdefault(code, set()).add(flag)
+        errors: list[str] = []
+
+        def add(code: Any, flag: str) -> None:
+            code = str(code or "").strip()
+            if _is_common_stock(code):
+                flags.setdefault(code, set()).add(flag)
+
+        def safe(label: str, fn) -> None:
+            try:
+                fn()
+            except Exception as e:  # 單一公告格式異動不影響其他來源
+                errors.append(f"{label}：{e}")
+
+        def twse_disposition() -> None:
+            for r in _rows(self.raw("twse", "disposition")):
+                if _in_period(pick(r, "DispositionPeriod", "處置期間"), trade_date):
+                    add(pick(r, "Code", "證券代號"), "disposition")
+
+        def twse_attention() -> None:
+            for r in _rows(self.raw("twse", "attention")):
+                add(pick(r, "Code", "證券代號"), "attention")
+
+        def twse_full() -> None:
+            for r in _rows(self.raw("twse", "full_delivery")):
+                add(pick(r, "Code", "證券代號"), "full_delivery")
+
+        def tpex_disposition() -> None:
+            for r in _rows(self.raw("tpex", "disposition")):
+                if _in_period(pick(r, "DispositionPeriod"), trade_date):
+                    add(pick(r, "SecuritiesCompanyCode", "Code"), "disposition")
+
+        def tpex_attention() -> None:
+            for r in _rows(self.raw("tpex", "attention")):
+                add(pick(r, "SecuritiesCompanyCode", "Code"), "attention")
+
+        def tpex_mode() -> None:
+            for r in _rows(self.raw("tpex", "trading_mode")):
+                r = _strip_keys(r)
+                if _is_yes(r.get("AlteredTrading")):
+                    add(pick(r, "SecuritiesCompanyCode", "Code"), "full_delivery")
+
+        safe("上市處置股", twse_disposition)
+        safe("上市注意股", twse_attention)
+        safe("上市全額交割股", twse_full)
+        safe("上櫃處置股", tpex_disposition)
+        safe("上櫃注意股", tpex_attention)
+        safe("上櫃全額交割股", tpex_mode)
+        if errors and not flags:
+            raise SourceError("；".join(errors))
+        self.last_errors = errors
         return flags
+
+    # ---------- 第 4 階段：重大訊息、事件、休市日 ----------
+    def announcements(self) -> list[dict]:
+        """上市＋上櫃每日重大訊息（官方只提供最近一日）。"""
+        out: list[dict] = []
+        for market, code_keys in (("twse", ("公司代號", "Code")), ("tpex", ("SecuritiesCompanyCode", "公司代號"))):
+            for r in _rows(self.raw(market, "announcements")):
+                r = _strip_keys(r)
+                code = str(pick(r, *code_keys) or "").strip()
+                if not _is_common_stock(code):
+                    continue
+                title = " ".join(str(pick(r, "主旨", "Subject") or "").split())
+                if not title:
+                    continue
+                out.append(
+                    {
+                        "stock_id": code,
+                        "published_at": _tw_datetime(pick(r, "發言日期"), pick(r, "發言時間")),
+                        "source": f"{market}_announcement",
+                        "title": title,
+                        "body": str(pick(r, "說明") or "").strip()[:4000] or None,
+                        "url": None,
+                    }
+                )
+        return out
+
+    def ex_dividend_events(self) -> list[dict]:
+        out: list[dict] = []
+        for r in _rows(self.raw("twse", "ex_dividend")):
+            code = str(pick(r, "Code") or "").strip()
+            d = parse_tw_date(pick(r, "Date"))
+            if _is_common_stock(code) and d:
+                out.append({"stock_id": code, "date": d, "event_type": "除權息", "note": f"除{pick(r, 'Exdividend') or ''}"})
+        for r in _rows(self.raw("tpex", "ex_dividend")):
+            code = str(pick(r, "SecuritiesCompanyCode") or "").strip()
+            d = parse_tw_date(pick(r, "ExRrightsExDividendDate"))
+            if _is_common_stock(code) and d:
+                out.append({"stock_id": code, "date": d, "event_type": "除權息", "note": pick(r, "ExRrightsExDividend")})
+        return out
+
+    def shareholder_meetings(self) -> list[dict]:
+        out: list[dict] = []
+        for market in ("twse", "tpex"):
+            for r in _rows(self.raw(market, "shareholder_meetings")):
+                r = _strip_keys(r)
+                code = str(pick(r, "公司代號") or "").strip()
+                d = parse_tw_date(pick(r, "開會日期"))
+                if _is_common_stock(code) and d:
+                    kind = pick(r, "股東常(臨時)會") or "常會"
+                    out.append({"stock_id": code, "date": d, "event_type": "股東會", "note": f"股東{kind}"})
+        return out
+
+    def holidays(self) -> set[date]:
+        """休市日（不含「開始交易日」「最後交易日」等仍有交易的日子）。"""
+        out: set[date] = set()
+        for r in _rows(self.raw("twse", "holidays")):
+            d = parse_tw_date(pick(r, "Date"))
+            text = f"{pick(r, 'Name') or ''}{pick(r, 'Description') or ''}"
+            if d and "開始交易" not in text and "最後交易" not in text:
+                out.add(d)
+        return out
+
+    def taiex_month(self, month: date) -> list[dict]:
+        """發行量加權股價指數，一次一個月。"""
+        payload = self.raw("twse", "taiex_history", date=month.strftime("%Y%m01"))
+        if isinstance(payload, dict) and payload.get("stat") not in (None, "OK"):
+            return []
+        out = []
+        for r in _table(payload):
+            d = parse_tw_date(_col(r, "日期"))
+            close = to_number(_col(r, "收盤指數"))
+            if d and close:
+                out.append({"series": "taiex", "date": d, "value": close})
+        return out
+
+
+def _strip_keys(row: dict) -> dict:
+    """官方欄位名稱偶有前後空白（例如「主旨 」）。"""
+    return {str(k).strip(): v for k, v in row.items()}
+
+
+def _is_yes(value: Any) -> bool:
+    return str(value or "").strip().upper() in {"Y", "Ｙ", "是"}
+
+
+def _tw_datetime(day: Any, hhmmss: Any) -> datetime:
+    d = parse_tw_date(day) or datetime.now(TZ).date()
+    t = str(hhmmss or "0").strip().zfill(6)[-6:]
+    try:
+        clock = time(int(t[:2]), int(t[2:4]), int(t[4:]))
+    except ValueError:
+        clock = time(0)
+    return datetime.combine(d, clock, tzinfo=TZ)
+
+
+def _in_period(text: Any, on: date | None) -> bool:
+    """處置期間如「115/11/09～115/11/13」或「1151105~1151111」；無法解析時視為有效。"""
+    if on is None or not text:
+        return True
+    parts = re.split(r"[~～]", str(text))
+    if len(parts) != 2:
+        return True
+    start, end = parse_tw_date(parts[0].strip()), parse_tw_date(parts[1].strip())
+    if not start or not end:
+        return True
+    return start <= on <= end

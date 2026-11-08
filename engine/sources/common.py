@@ -91,6 +91,12 @@ class HttpClient:
         return self._client
 
     def get_json(self, url: str, params: dict[str, Any] | None = None) -> Any:
+        return self._get(url, params, lambda r: r.json())
+
+    def get_text(self, url: str, params: dict[str, Any] | None = None) -> str:
+        return self._get(url, params, lambda r: r.text)
+
+    def _get(self, url: str, params: dict[str, Any] | None, parse: Callable[[httpx.Response], Any]) -> Any:
         last_error: Exception | None = None
         for attempt in range(self.max_retries + 1):
             try:
@@ -98,7 +104,7 @@ class HttpClient:
                 if resp.status_code == 429 or resp.status_code >= 500:
                     raise SourceError(f"HTTP {resp.status_code}")
                 resp.raise_for_status()
-                return resp.json()
+                return parse(resp)  # 解析失敗（ValueError）也重試
             except (httpx.HTTPError, SourceError, ValueError) as e:
                 last_error = e
                 if attempt < self.max_retries:

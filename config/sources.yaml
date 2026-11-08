@@ -25,6 +25,10 @@ finmind:
     shareholding: TaiwanStockShareholding
     holding_distribution: TaiwanStockHoldingSharesPer   # 付費
     broker_report: TaiwanStockTradingDailyReport        # Sponsor（單檔）；全市場需 Sponsor Pro
+    # 大盤燈號輸入（2026-11-08 實測不帶 token 也可取得）
+    us_price: USStockPrice                              # data_id：^SOX、TSM
+    exchange_rate: TaiwanExchangeRate                   # data_id：USD
+    futures_institutional: TaiwanFuturesInstitutionalInvestors  # data_id：TX
 
 twse:
   verified: true   # 2026-11-08 probe 確認，2026-11-06 實際抓取全市場驗證
@@ -37,6 +41,12 @@ twse:
     attention: https://openapi.twse.com.tw/v1/announcement/notice
     institutional: https://www.twse.com.tw/rwd/zh/fund/T86?date={date}&selectType=ALLBUT0999&response=json
     taiex_history: https://www.twse.com.tw/rwd/zh/TAIEX/MI_5MINS_HIST?date={date}&response=json
+    # 第 4 階段（2026-11-08 實測）
+    full_delivery: https://openapi.twse.com.tw/v1/exchangeReport/TWT85U      # 變更交易（全額交割）
+    announcements: https://openapi.twse.com.tw/v1/opendata/t187ap04_L        # 每日重大訊息
+    ex_dividend: https://openapi.twse.com.tw/v1/exchangeReport/TWT48U_ALL    # 除權除息預告表
+    shareholder_meetings: https://openapi.twse.com.tw/v1/opendata/t187ap41_L # 股東會日期
+    holidays: https://openapi.twse.com.tw/v1/holidaySchedule/holidaySchedule # 開休市日期
 
 tpex:
   verified: true   # 2026-11-08 probe 確認
@@ -46,11 +56,22 @@ tpex:
     margin_all: https://www.tpex.org.tw/openapi/v1/tpex_mainboard_margin_balance
     company_info: https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap03_O
     institutional: https://www.tpex.org.tw/openapi/v1/tpex_3insti_daily_trading
+    # 第 4 階段（2026-11-08 實測）
+    disposition: https://www.tpex.org.tw/openapi/v1/tpex_disposal_information
+    attention: https://www.tpex.org.tw/openapi/v1/tpex_trading_warning_information
+    trading_mode: https://www.tpex.org.tw/openapi/v1/tpex_cmode               # 變更交易（全額交割）、管理股票
+    announcements: https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap04_O
+    ex_dividend: https://www.tpex.org.tw/openapi/v1/tpex_exright_prepost
+    shareholder_meetings: https://www.tpex.org.tw/openapi/v1/t187ap41_O
 
 tdcc:
   verified: false
   # 集保股權分散表（每週），免費模式用
   holding_distribution: https://opendata.tdcc.com.tw/getOD.ashx?id=1-5
+
+ai:
+  ollama_timeout_seconds: 120
+  claude_model: claude-opus-5-5   # 可用環境變數 ANTHROPIC_MODEL 覆寫
 
 http:
   timeout_seconds: 30

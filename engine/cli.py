@@ -13,9 +13,6 @@ from datetime import date, datetime
 from engine.config import TZ, load_settings
 
 PIPELINE_STEPS = [
-    ("liquidity", "流動性過濾"),
-    ("news", "消息面排雷"),
-    ("filters", "大盤燈號與族群強弱濾網"),
     ("signals", "買進訊號與參考價位"),
     ("holdings", "持股檢查"),
     ("notify", "LINE 每日報告"),
@@ -214,6 +211,64 @@ def cmd_score(args) -> None:
         print(f"  {sid} 未評分：{reason}")
 
 
+def _print_flags(flags: list[dict]) -> None:
+    for f in flags:
+        print(f"  {f['stock_id']}  {f['reason']}")
+
+
+def cmd_liquidity(args) -> None:
+    from engine.db import connect
+    from engine.filters.runner import run_liquidity
+    from engine.joblog import job_run
+    from engine.repository import Repository
+
+    settings = load_settings()
+    as_of = _parse_date(args.date)
+    conn = connect()
+    with job_run(conn, "liquidity", as_of) as run:
+        result = run_liquidity(settings, Repository(conn), as_of)
+        run.note(universe=result["universe"], excluded=result["excluded"])
+    print(f"流動性過濾：{result['universe']} 檔中排除 {result['excluded']} 檔")
+    _print_flags(result["flags"])
+
+
+def cmd_news(args) -> None:
+    from engine.ai import create_judge
+    from engine.filters.runner import run_news
+    from engine.joblog import job_run
+
+    as_of = _parse_date(args.date)
+    settings, conn, repo, exchange, _finmind = _services()
+    judge = create_judge(settings)
+    with job_run(conn, "news", as_of) as run:
+        result = run_news(settings, repo, exchange, exchange.http, judge, as_of, collect=not args.no_collect)
+        run.note(**{k: v for k, v in result.items() if k != "flags"}, flagged=len(result["flags"]))
+    print(f"消息面排雷：收集 {result.get('collected', 0)} 則、判讀 {result['judged']} 則"
+          f"（{result['judged_by'] or '無'}），排除 {result['excluded']} 檔")
+    for e in result.get("errors", []) + result.get("ai_errors", []):
+        print(f"  注意：{e}")
+    _print_flags(result["flags"])
+
+
+def cmd_filters(args) -> None:
+    from engine.filters.runner import run_filters
+    from engine.joblog import job_run
+
+    as_of = _parse_date(args.date)
+    settings, conn, repo, exchange, finmind = _services()
+    with job_run(conn, "filters", as_of) as run:
+        result = run_filters(settings, repo, exchange, finmind, as_of, refresh=not args.no_refresh)
+        run.note(**result)
+    print(f"大盤燈號：{result['light_label']}（合計 {result['light_total']:+d}）")
+    for item in result["light_inputs"].values():
+        print(f"  {item['vote']:+d}  {item['label']}：{item['reason']}")
+    print(f"族群：{result['groups_ranked']} 個排名，弱勢 {'、'.join(result['weak_groups']) or '無'}；"
+          f"{result['blocked_by_group']} 檔屬弱勢族群")
+    print(f"事件提示 {result['event_warnings']} 則；今日排除合計 {result['excluded_total']} 檔")
+    for w in result["warnings"]:
+        print(f"  注意：{w}")
+
+
 def cmd_step(args) -> None:
     label = dict(PIPELINE_STEPS)[args.command]
     raise SystemExit(f"「{label}」尚未實作（{_parse_date(args.date)}）")
@@ -248,6 +303,20 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("score", help="三面向評分")
     p.add_argument("--date")
     p.set_defaults(func=cmd_score)
+
+    p = sub.add_parser("liquidity", help="流動性過濾（日均量、處置、注意、全額交割）")
+    p.add_argument("--date")
+    p.set_defaults(func=cmd_liquidity)
+
+    p = sub.add_parser("news", help="消息面排雷（收集重大訊息、AI 判讀）")
+    p.add_argument("--date")
+    p.add_argument("--no-collect", action="store_true", help="不抓新資料，只判讀與更新排除名單")
+    p.set_defaults(func=cmd_news)
+
+    p = sub.add_parser("filters", help="大盤燈號、族群強弱、事件行事曆")
+    p.add_argument("--date")
+    p.add_argument("--no-refresh", action="store_true", help="不抓外部資料，只用資料庫既有資料重算")
+    p.set_defaults(func=cmd_filters)
 
     for name, label in PIPELINE_STEPS:
         p = sub.add_parser(name, help=label)
