@@ -27,7 +27,7 @@ finmind:
     broker_report: TaiwanStockTradingDailyReport        # Sponsor（單檔）；全市場需 Sponsor Pro
 
 twse:
-  verified: true   # 2026-11-08 probe 確認；T86 三大法人需於交易日再確認
+  verified: true   # 2026-11-08 probe 確認，2026-11-06 實際抓取全市場驗證
   endpoints:
     daily_all: https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL
     valuation_all: https://openapi.twse.com.tw/v1/exchangeReport/BWIBBU_ALL
