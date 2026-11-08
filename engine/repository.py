@@ -48,22 +48,22 @@ class Repository:
         return len(rows)
 
     def upsert_chips(self, rows: Iterable[dict]) -> int:
-        count = 0
+        # 依欄位組合分批，用 executemany 一次送出（逐筆送出跨洲連線會非常慢）
+        batches: dict[tuple[str, ...], list[tuple]] = {}
+        for r in rows:
+            cols = tuple(c for c in CHIP_COLUMNS if c in r)
+            if cols:
+                batches.setdefault(cols, []).append((r["stock_id"], r["date"], *(_adapt(r[c]) for c in cols)))
         with self.conn.cursor() as cur:
-            for r in rows:
-                cols = [c for c in CHIP_COLUMNS if c in r]
-                if not cols:
-                    continue
-                values = [r["stock_id"], r["date"], *(_adapt(r[c]) for c in cols)]
-                cur.execute(
+            for cols, values in batches.items():
+                cur.executemany(
                     f"INSERT INTO chips (stock_id, date, {', '.join(cols)}) "
                     f"VALUES ({', '.join(['%s'] * (len(cols) + 2))}) "
                     f"ON CONFLICT (stock_id, date) DO UPDATE SET "
                     + ", ".join(f"{c} = EXCLUDED.{c}" for c in cols),
                     values,
                 )
-                count += 1
-        return count
+        return sum(len(v) for v in batches.values())
 
     def upsert_stocks(self, rows: Iterable[dict]) -> int:
         rows = list(rows)
