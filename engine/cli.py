@@ -14,7 +14,6 @@ from engine.config import TZ, load_settings
 
 PIPELINE_STEPS = [
     ("holdings", "持股檢查"),
-    ("notify", "LINE 每日報告"),
 ]
 
 
@@ -281,8 +280,11 @@ def cmd_signals(args) -> None:
         result = run_signals(settings, Repository(conn), as_of, force=args.force)
         run.note(status=result["status"], reason=result["reason"], candidates=result.get("candidates", 0),
                  signals=len(result["signals"]), blocked=result["blocked"])
-        if result["status"] == "halted":
+        if result["status"] in ("halted", "closed"):
             run.skip(result["reason"])
+    if result["status"] == "closed":
+        print(f"今日不發訊號：{result['reason']}")
+        return
     if result["status"] == "halted":
         print(f"暫停發出訊號：{result['reason']}")
         raise SystemExit(2)
@@ -300,6 +302,50 @@ def cmd_signals(args) -> None:
             print(f"    提示：{w}")
     for b in result["blocked"]:
         print(f"  {b['stock_id']} 觸發{'、'.join(b['triggers'])}但未發訊號：{'、'.join(b['reasons'])}")
+
+
+def cmd_notify(args) -> None:
+    from engine.db import connect
+    from engine.joblog import job_run
+    from engine.notify.line import LineClient
+    from engine.notify.runner import run_notify
+    from engine.repository import Repository
+
+    settings = load_settings()
+    as_of = _parse_date(args.date)
+    conn = connect()
+    line = LineClient.from_env(settings.notify["line"])
+    with job_run(conn, "notify", as_of) as run:
+        result = run_notify(settings, Repository(conn), line, as_of, resend=args.resend)
+        run.note(**{k: v for k, v in result.items() if k != "messages"}, message_count=len(result.get("messages", [])))
+    for m in result.get("messages", []):
+        print(m)
+        print("─" * 20)
+    if not line.configured:
+        print("注意：未設定 LINE_CHANNEL_ACCESS_TOKEN／LINE_OWNER_USER_ID，以上內容沒有推播")
+    for key in ("report_skipped", "skipped"):
+        if result.get(key):
+            print(result[key])
+    if result["alerts"]:
+        print("系統警告：" + "；".join(result["alerts"]))
+
+
+def cmd_alert(args) -> None:
+    """只送系統警告（排程任一步驟失敗時呼叫）。"""
+    from engine.db import connect
+    from engine.joblog import job_run
+    from engine.notify.line import LineClient
+    from engine.notify.runner import send_alerts
+    from engine.repository import Repository
+
+    settings = load_settings()
+    as_of = _parse_date(args.date)
+    conn = connect()
+    line = LineClient.from_env(settings.notify["line"])
+    with job_run(conn, "alert", as_of) as run:
+        result = send_alerts(settings, Repository(conn), line, as_of)
+        run.note(**result)
+    print("系統警告：" + ("；".join(result["alerts"]) or "無"))
 
 
 def cmd_step(args) -> None:
@@ -355,6 +401,15 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--date")
     p.add_argument("--force", action="store_true", help="資料完整性檢查未通過時仍產生訊號（除錯用）")
     p.set_defaults(func=cmd_signals)
+
+    p = sub.add_parser("notify", help="LINE 每日報告與系統警告")
+    p.add_argument("--date")
+    p.add_argument("--resend", action="store_true", help="今日報告已送出時仍重送")
+    p.set_defaults(func=cmd_notify)
+
+    p = sub.add_parser("alert", help="只檢查並推播系統警告")
+    p.add_argument("--date")
+    p.set_defaults(func=cmd_alert)
 
     for name, label in PIPELINE_STEPS:
         p = sub.add_parser(name, help=label)

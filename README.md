@@ -21,6 +21,8 @@ python -m engine.cli news         # 消息面排雷（AI 判讀，連不上時�
 python -m engine.cli score        # 三面向評分
 python -m engine.cli filters      # 大盤燈號、族群強弱、事件行事曆
 python -m engine.cli signals      # 買進訊號、參考價位、建議張數（資料不完整時暫停）
+python -m engine.cli notify       # LINE 每日報告＋系統警告（同一天只送一次，--resend 重送）
+python -m engine.cli alert        # 只檢查並推播系統警告（排程任一步驟失敗時自動執行）
 ```
 
 ## 開發進度
@@ -30,7 +32,7 @@ python -m engine.cli signals      # 買進訊號、參考價位、建議張數�
 - [x] 3. 評分引擎
 - [x] 4. 濾網（流動性、消息面排雷、大盤燈號、族群強弱、事件行事曆）
 - [x] 5. 訊號與風控（入選名單、進場條件、參考價位、風控張數）
-- [ ] 6. LINE 報告
+- [x] 6. LINE 每日報告與系統警告
 - [ ] 7. 持股追蹤與交易日誌
 - [ ] 8. 盤中停損監控
 - [ ] 9. 個人網站
@@ -46,7 +48,7 @@ python -m engine.cli signals      # 買進訊號、參考價位、建議張數�
 | GitHub Secrets：DATABASE_URL、FINMIND_TOKEN | 完成 |
 | 證交所／櫃買資料欄位 probe | 完成，2026-11-06 全市場實際抓取通過（約 1,980 檔，26 秒） |
 | 股票清單、產業族群、自訂族群 | 完成：1,990 家公司、35 個產業族群＋5 個自訂族群 |
-| LINE Messaging API（LINE_CHANNEL_ACCESS_TOKEN、LINE_OWNER_USER_ID） | 第 6 階段前由擁有者設定 |
+| LINE Messaging API（LINE_CHANNEL_ACCESS_TOKEN、LINE_OWNER_USER_ID） | 待擁有者設定（未設定時報告只輸出到排程記錄，不會推播）；設定方式：`gh secret set LINE_CHANNEL_ACCESS_TOKEN`、`gh secret set LINE_OWNER_USER_ID` |
 | Vercel 專案（root 設為 web/，環境變數 DATABASE_URL、SITE_PASSWORD、SESSION_SECRET） | 第 9 階段建立 |
 | 自選股 | 擁有者在程式完成後自行加入 |
 
@@ -59,7 +61,7 @@ python -m engine.cli signals      # 買進訊號、參考價位、建議張數�
 ## 交給 Claude Code 接手
 
 1. 用 Claude Code 開啟本 repo
-2. 指示：「讀 CLAUDE.md、README.md、docs/open-questions.md，從第 14 節第 6 階段開始開發」
+2. 指示：「讀 CLAUDE.md、README.md、docs/open-questions.md，從第 14 節第 7 階段開始開發」
 3. 消息面判讀目前用關鍵字（排程預設 `AI_PROVIDER=rules`）；要改用 Claude，在 GitHub Variables 設 `AI_PROVIDER=claude` 並加 `ANTHROPIC_API_KEY` Secret（見 docs/open-questions.md #13）
 4. 第 6 階段（LINE）前，擁有者需在 GitHub Secrets 加上 `LINE_CHANNEL_ACCESS_TOKEN`、`LINE_OWNER_USER_ID`
 5. 第 9 階段（網站）前，在 Vercel 匯入本 repo，Root Directory 設為 `web`，並設定 `DATABASE_URL`、`SITE_PASSWORD`、`SESSION_SECRET`

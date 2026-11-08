@@ -1,0 +1,17 @@
+# LINE 通知設定（只推給 LINE_OWNER_USER_ID 本人）
+line:
+  push_url: https://api.line.me/v2/bot/message/push   # 官方文件確認（2026-11-08）
+  max_text_chars: 4800        # 單則文字上限 5,000 字，保留餘裕
+  max_messages_per_push: 5    # 單次推播最多 5 則
+  max_messages_per_report: 5  # 每日報告最多幾則；超過時改為精簡版＋網站連結
+  timeout_seconds: 20
+  max_retries: 3
+  backoff_base_seconds: 2
+
+daily_report:
+  top_groups: 5               # 族群強弱排行列出前幾名
+  stocks_per_group: 3         # 各族群列出前幾名個股
+  max_blocked: 10             # 「觸發但被擋下」最多列幾檔
+
+alerts:
+  heartbeat_max_age_minutes: 15   # 盤中監控心跳超過此時間視為停止（第 8 階段）

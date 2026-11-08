@@ -63,7 +63,8 @@ def run_signals(settings: Settings, repo: Repository, as_of: date, force: bool =
     if not ok and not force:
         repo.replace_signals(as_of, "buy", [])
         repo.conn.commit()
-        return {"status": "halted", "reason": gate_reason, "signals": [], "blocked": []}
+        closed = (repo.latest_job("fetch", as_of) or ("", {}))[0] == "skipped"
+        return {"status": "closed" if closed else "halted", "reason": gate_reason, "signals": [], "blocked": []}
 
     ids = universe(settings, repo)
     risk, scoring = settings.risk, settings.scoring

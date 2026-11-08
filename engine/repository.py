@@ -378,3 +378,95 @@ class Repository:
                 [tuple(_adapt(r.get(c)) if c != "triggers" else r[c] for c in cols) for r in rows],
             )
         return len(rows)
+
+    # ---------- 通知（第 6 階段） ----------
+    def market_row(self, on_date: date) -> dict | None:
+        with self.conn.cursor() as cur:
+            cur.execute("SELECT light, inputs, group_strength FROM market WHERE date = %s", (on_date,))
+            row = cur.fetchone()
+            return {"light": row[0], "inputs": row[1] or {}, "group_strength": row[2] or []} if row else None
+
+    def signals_on(self, on_date: date, side: str) -> list[dict]:
+        cols = ("stock_id", "horizon", "triggers", "entry_low", "entry_high", "stop_loss", "take_profit",
+                "suggested_lots", "reason", "detail")
+        with self.conn.cursor() as cur:
+            cur.execute(
+                f"SELECT {', '.join(cols)} FROM signals WHERE date = %s AND side = %s "
+                "ORDER BY horizon DESC, (detail->'score'->>'total')::numeric DESC NULLS LAST, stock_id",
+                (on_date, side),
+            )
+            out = []
+            for r in cur.fetchall():
+                d = dict(zip(cols, r, strict=True))
+                for k in ("entry_low", "entry_high", "stop_loss", "take_profit"):
+                    d[k] = None if d[k] is None else float(d[k])
+                out.append(d)
+            return out
+
+    def holdings_detail(self, as_of: date) -> list[dict]:
+        with self.conn.cursor() as cur:
+            cur.execute(
+                "SELECT h.stock_id, s.name, h.shares, h.avg_cost, h.stop_loss, h.take_profit, ("
+                " SELECT close FROM daily_prices p WHERE p.stock_id = h.stock_id AND p.date <= %s"
+                " AND p.close IS NOT NULL ORDER BY p.date DESC LIMIT 1) "
+                "FROM holdings h JOIN stocks s USING (stock_id) ORDER BY h.stock_id",
+                (as_of,),
+            )
+            cols = ("stock_id", "name", "shares", "avg_cost", "stop_loss", "take_profit", "close")
+            out = []
+            for r in cur.fetchall():
+                d = dict(zip(cols, r, strict=True))
+                for k in ("avg_cost", "stop_loss", "take_profit", "close"):
+                    d[k] = None if d[k] is None else float(d[k])
+                out.append(d)
+            return out
+
+    def jobs_on(self, run_date: date) -> list[dict]:
+        """某日各步驟最新一筆執行紀錄。"""
+        with self.conn.cursor() as cur:
+            cur.execute(
+                "SELECT DISTINCT ON (job) job, status, detail, started_at FROM job_logs "
+                "WHERE run_date = %s ORDER BY job, started_at DESC, log_id DESC",
+                (run_date,),
+            )
+            return [{"job": j, "status": s, "detail": d or {}, "started_at": t} for j, s, d, t in cur.fetchall()]
+
+    def api_usage_on(self, provider: str, start: datetime, end: datetime) -> list[tuple[datetime, int]]:
+        with self.conn.cursor() as cur:
+            cur.execute(
+                "SELECT hour, calls FROM api_usage WHERE provider = %s AND hour >= %s AND hour < %s ORDER BY hour",
+                (provider, start, end),
+            )
+            return list(cur.fetchall())
+
+    def last_heartbeat(self, job: str) -> datetime | None:
+        with self.conn.cursor() as cur:
+            cur.execute("SELECT max(started_at) FROM job_logs WHERE job = %s AND status = 'heartbeat'", (job,))
+            return cur.fetchone()[0]
+
+    def score_map(self, on_date: date, horizon: str) -> dict[str, float]:
+        """名單用分數（含被排除的股票，供族群排行顯示）。"""
+        with self.conn.cursor() as cur:
+            cur.execute(
+                "SELECT stock_id, total FROM scores WHERE date = %s AND horizon = %s AND total IS NOT NULL",
+                (on_date, horizon),
+            )
+            return {s: float(t) for s, t in cur.fetchall()}
+
+    def alerts_sent(self, run_date: date) -> set[str]:
+        with self.conn.cursor() as cur:
+            cur.execute(
+                "SELECT detail->'alerts_sent' FROM job_logs WHERE run_date = %s AND job IN ('notify', 'alert') "
+                "AND status = 'success' AND detail ? 'alerts_sent'",
+                (run_date,),
+            )
+            return {a for (lst,) in cur.fetchall() for a in (lst or [])}
+
+    def report_sent(self, run_date: date) -> bool:
+        with self.conn.cursor() as cur:
+            cur.execute(
+                "SELECT 1 FROM job_logs WHERE run_date = %s AND job = 'notify' AND status = 'success' "
+                "AND (detail->>'report_sent')::boolean LIMIT 1",
+                (run_date,),
+            )
+            return cur.fetchone() is not None

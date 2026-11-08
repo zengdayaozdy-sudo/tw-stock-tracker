@@ -51,6 +51,7 @@ class Settings:
     filters: dict[str, Any]
     groups: dict[str, Any]
     sources: dict[str, Any] = field(default_factory=dict)
+    notify: dict[str, Any] = field(default_factory=dict)
     all_features: dict[str, str] = field(default_factory=dict)
 
     def enabled(self, feature: str) -> bool:
@@ -103,6 +104,7 @@ def load_settings(plan_name: str | None = None, config_dir: Path = CONFIG_DIR) -
         filters=_load_yaml("filters.yaml", config_dir),
         groups=_load_yaml("groups.yaml", config_dir),
         sources=_load_yaml("sources.yaml", config_dir),
+        notify=_load_yaml("notify.yaml", config_dir),
         all_features=all_features,
     )
 
