@@ -24,8 +24,8 @@ jobs:
       FINMIND_TOKEN: ${{ secrets.FINMIND_TOKEN }}
       LINE_CHANNEL_ACCESS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}
       LINE_OWNER_USER_ID: ${{ secrets.LINE_OWNER_USER_ID }}
-      # AI 判讀：GitHub Actions 連不到本機 Ollama 時會自動改用關鍵字判讀
-      AI_PROVIDER: ${{ vars.AI_PROVIDER || 'ollama' }}
+      # AI 判讀：擁有者決定先用關鍵字（rules）；改用 Claude 時在 Variables 設 AI_PROVIDER=claude 並加 ANTHROPIC_API_KEY
+      AI_PROVIDER: ${{ vars.AI_PROVIDER || 'rules' }}
       OLLAMA_BASE_URL: ${{ vars.OLLAMA_BASE_URL }}
       OLLAMA_MODEL: ${{ vars.OLLAMA_MODEL }}
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}

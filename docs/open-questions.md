@@ -16,7 +16,7 @@
 | 10 | 盤中監控常駐程式要跑在哪台電腦（作業系統） | 待擁有者回覆 |
 | 11 | FinMind 財報 type 名稱（EPS、GrossProfit、OperatingIncome、IncomeAfterTaxes、Equity、Liabilities、TotalAssets）需實測確認，名稱寫在 engine/scoring/indicators.py 的 METRIC_KEYS | 回補資料後檢查評分拆解是否還有「資料缺漏」 |
 | 12 | 免費模式市值 | 已處理：公司資料實收資本額 ÷ 面額 = 股數，每日 × 收盤價更新市值 |
-| 13 | 消息面 AI 判讀在 GitHub Actions 上連不到本機 Ollama。選項：(a) 設 `AI_PROVIDER=claude` 並加 `ANTHROPIC_API_KEY` Secret；(b) 在自己電腦用 Ollama 補跑 `python -m engine.cli news`（之後再跑 `filters` 更新排除名單）；(c) 維持關鍵字判讀 | 待擁有者決定；目前未設定時自動改用關鍵字判讀 |
+| 13 | 消息面 AI 判讀在 GitHub Actions 上連不到本機 Ollama。選項：(a) 設 `AI_PROVIDER=claude` 並加 `ANTHROPIC_API_KEY` Secret；(b) 在自己電腦用 Ollama 補跑 `python -m engine.cli news`（之後再跑 `filters` 更新排除名單）；(c) 維持關鍵字判讀 | 已決定（2026-11-08）：先用關鍵字判讀，排程預設 `AI_PROVIDER=rules`；日後要換 AI 只需設定 GitHub Variables／Secrets，不需改程式 |
 | 14 | 法說會日期沒有證交所／櫃買 OpenAPI，公開資訊觀測站需表單查詢 | 先由網站手動登錄（第 9 階段），events.source = manual |
 | 15 | 財經新聞 RSS 來源（filters.yaml 的 rss_feeds）：需擁有者選擇條款允許自動讀取的來源；目前只用公開資訊觀測站重大訊息 | 待擁有者提供 |
 | 16 | 濾網門檻（燈號各輸入的區間、外資未平倉 ±口數、弱勢族群比例 30%）為初始值 | 第 10 階段回測後調整 |

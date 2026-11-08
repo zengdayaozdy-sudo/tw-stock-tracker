@@ -59,6 +59,6 @@ python -m engine.cli filters      # 大盤燈號、族群強弱、事件行事�
 
 1. 用 Claude Code 開啟本 repo
 2. 指示：「讀 CLAUDE.md、README.md、docs/open-questions.md，從第 14 節第 5 階段開始開發」
-3. 消息面 AI 判讀：GitHub Actions 連不到本機 Ollama，需擇一（見 docs/open-questions.md #13）；未設定時以關鍵字判讀
+3. 消息面判讀目前用關鍵字（排程預設 `AI_PROVIDER=rules`）；要改用 Claude，在 GitHub Variables 設 `AI_PROVIDER=claude` 並加 `ANTHROPIC_API_KEY` Secret（見 docs/open-questions.md #13）
 4. 第 6 階段（LINE）前，擁有者需在 GitHub Secrets 加上 `LINE_CHANNEL_ACCESS_TOKEN`、`LINE_OWNER_USER_ID`
 5. 第 9 階段（網站）前，在 Vercel 匯入本 repo，Root Directory 設為 `web`，並設定 `DATABASE_URL`、`SITE_PASSWORD`、`SESSION_SECRET`
