@@ -470,3 +470,114 @@ class Repository:
                 (run_date,),
             )
             return cur.fetchone() is not None
+
+    # ---------- 持股與交易日誌（第 7 階段） ----------
+    def holding_ids(self) -> list[str]:
+        with self.conn.cursor() as cur:
+            cur.execute("SELECT stock_id FROM holdings ORDER BY stock_id")
+            return [r[0] for r in cur.fetchall()]
+
+    def holding(self, stock_id: str) -> dict | None:
+        cols = ("stock_id", "shares", "avg_cost", "opened_date", "stop_loss", "take_profit", "highest_close")
+        with self.conn.cursor() as cur:
+            cur.execute(f"SELECT {', '.join(cols)} FROM holdings WHERE stock_id = %s", (stock_id,))
+            row = cur.fetchone()
+        if not row:
+            return None
+        d = dict(zip(cols, row, strict=True))
+        for k in ("avg_cost", "stop_loss", "take_profit", "highest_close"):
+            d[k] = None if d[k] is None else float(d[k])
+        return d
+
+    def holdings(self) -> list[dict]:
+        return [h for sid in self.holding_ids() if (h := self.holding(sid))]
+
+    def save_holding(self, h: dict) -> None:
+        with self.conn.cursor() as cur:
+            cur.execute(
+                "INSERT INTO holdings (stock_id, shares, avg_cost, opened_date, stop_loss, take_profit, highest_close, "
+                "updated_at) VALUES (%s, %s, %s, %s, %s, %s, %s, now()) ON CONFLICT (stock_id) DO UPDATE SET "
+                "shares = EXCLUDED.shares, avg_cost = EXCLUDED.avg_cost, opened_date = EXCLUDED.opened_date, "
+                "stop_loss = EXCLUDED.stop_loss, take_profit = EXCLUDED.take_profit, "
+                "highest_close = EXCLUDED.highest_close, updated_at = now()",
+                (h["stock_id"], h["shares"], h["avg_cost"], h["opened_date"], h.get("stop_loss"),
+                 h.get("take_profit"), h.get("highest_close")),
+            )
+
+    def delete_holding(self, stock_id: str) -> None:
+        with self.conn.cursor() as cur:
+            cur.execute("DELETE FROM holdings WHERE stock_id = %s", (stock_id,))
+
+    def insert_trade(self, t: dict) -> int:
+        with self.conn.cursor() as cur:
+            cur.execute(
+                "INSERT INTO trades (stock_id, date, side, price, shares, fee, tax, score_snapshot, signal_snapshot, "
+                "note) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING trade_id",
+                (t["stock_id"], t["date"], t["side"], t["price"], t["shares"], t["fee"], t["tax"],
+                 _adapt(t.get("score_snapshot")), _adapt(t.get("signal_snapshot")), t.get("note")),
+            )
+            return cur.fetchone()[0]
+
+    def trades(self, until: date | None = None) -> list[dict]:
+        cols = ("trade_id", "stock_id", "date", "side", "price", "shares", "fee", "tax", "score_snapshot",
+                "signal_snapshot", "note")
+        with self.conn.cursor() as cur:
+            cur.execute(
+                f"SELECT {', '.join(cols)} FROM trades WHERE (%s::date IS NULL OR date <= %s) "
+                "ORDER BY date, trade_id",
+                (until, until),
+            )
+            out = []
+            for r in cur.fetchall():
+                d = dict(zip(cols, r, strict=True))
+                for k in ("price", "fee", "tax"):
+                    d[k] = float(d[k])
+                out.append(d)
+            return out
+
+    def latest_scores(self, stock_id: str, as_of: date) -> dict[str, dict]:
+        """as_of 當天（含）以前最近一天的短線、中長線分數。"""
+        with self.conn.cursor() as cur:
+            cur.execute(
+                "SELECT DISTINCT ON (horizon) horizon, date, total, fundamental, technical, chips, status FROM scores "
+                "WHERE stock_id = %s AND date <= %s ORDER BY horizon, date DESC",
+                (stock_id, as_of),
+            )
+            return {
+                h: {"date": d.isoformat(), "total": _f(t), "fundamental": _f(f), "technical": _f(te), "chips": _f(c),
+                    "status": st}
+                for h, d, t, f, te, c, st in cur.fetchall()
+            }
+
+    def latest_signal(self, stock_id: str, side: str, start: date, end: date) -> dict | None:
+        cols = ("date", "horizon", "triggers", "entry_low", "entry_high", "stop_loss", "take_profit",
+                "suggested_lots", "reason")
+        with self.conn.cursor() as cur:
+            cur.execute(
+                f"SELECT {', '.join(cols)} FROM signals WHERE stock_id = %s AND side = %s AND date BETWEEN %s AND %s "
+                "ORDER BY date DESC, horizon DESC LIMIT 1",
+                (stock_id, side, start, end),
+            )
+            row = cur.fetchone()
+        if not row:
+            return None
+        d = dict(zip(cols, row, strict=True))
+        d["date"] = d["date"].isoformat()
+        for k in ("entry_low", "entry_high", "stop_loss", "take_profit"):
+            d[k] = _f(d[k])
+        return d
+
+    def price_history(self, stock_id: str, start: date, end: date) -> list[tuple[date, float]]:
+        return [(d, c) for _s, d, c in self.closes([stock_id], start, end)]
+
+    def set_setting(self, key: str, value: Any) -> None:
+        with self.conn.cursor() as cur:
+            cur.execute(
+                "INSERT INTO settings (key, value, updated_at) VALUES (%s, %s, now()) "
+                "ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()",
+                (key, json.dumps(value, ensure_ascii=False)),
+            )
+
+
+def _f(x: Any) -> float | None:
+    return None if x is None else float(x)

@@ -27,6 +27,7 @@ FINMIND_SERIES = [
     ("tsm_adr", "us_price", "TSM", lambda rows: fm.parse_us_close(rows, "tsm_adr")),
     ("usd_twd", "exchange_rate", "USD", fm.parse_exchange_rate),
     ("foreign_tx_oi", "futures_institutional", "TX", fm.parse_foreign_futures_oi),
+    ("etf_0050", "price", "0050", lambda rows: fm.parse_close_series(rows, "etf_0050")),  # 交易日誌績效比較基準
 ]
 
 

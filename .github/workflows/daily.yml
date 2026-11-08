@@ -51,6 +51,8 @@ jobs:
         run: python -m engine.cli filters ${{ inputs.date && format('--date {0}', inputs.date) || '' }}
       - name: 買進訊號與參考價位
         run: python -m engine.cli signals ${{ inputs.date && format('--date {0}', inputs.date) || '' }}
+      - name: 持股檢查與賣出提醒
+        run: python -m engine.cli holdings ${{ inputs.date && format('--date {0}', inputs.date) || '' }}
       - name: LINE 每日報告
         run: python -m engine.cli notify ${{ inputs.date && format('--date {0}', inputs.date) || '' }}
       - name: 失敗時推播系統警告

@@ -15,8 +15,13 @@ on:
           - watch-list
           - backfill
           - plan
+          - trade-buy
+          - trade-sell
+          - trade-list
+          - stats
+          - capital
       args:
-        description: 參數（例如股票代號，以空白分隔：2330 2317 2454）
+        description: 參數（自選股：2330 2317；買賣：2330 1050 1000 --date 2026-11-06（代號 價格 股數）；總資金：1500000）
         required: false
 
 jobs:
@@ -45,4 +50,9 @@ jobs:
             watch-remove) python -m engine.cli watch remove $ARGS ;;
             watch-list)   python -m engine.cli watch list ;;
             backfill)     python -m engine.cli backfill $ARGS ;;
+            trade-buy)    python -m engine.cli trade buy $ARGS ;;
+            trade-sell)   python -m engine.cli trade sell $ARGS ;;
+            trade-list)   python -m engine.cli trade list ;;
+            stats)        python -m engine.cli stats ;;
+            capital)      python -m engine.cli capital $ARGS ;;
           esac

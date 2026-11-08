@@ -112,6 +112,9 @@ class FakeFinMind:
             return [{"date": d.date().isoformat(), "institutional_investors": "外資",
                      "long_open_interest_balance_volume": max(net, 0) + 20000,
                      "short_open_interest_balance_volume": max(-net, 0) + 20000} for d in days]
+        if key == "price":
+            return [{"date": d.date().isoformat(), "stock_id": data_id, "close": 90 + i * 0.1}
+                    for i, d in enumerate(days)]
         raise AssertionError(key)
 
 
@@ -196,7 +199,7 @@ def test_market_series_incremental_refresh(repo):
     run_filters(settings, repo, FakeExchange(), fm_client, AS_OF)
     n = repo.series("taiex", AS_OF - timedelta(days=400), AS_OF)
     assert len(n) == len(DATES) - sum(1 for d in DATES if d.date() < AS_OF - timedelta(days=200))
-    assert len(fm_client.calls) == 4  # 每日只需 4 次 FinMind 呼叫
+    assert len(fm_client.calls) == 5  # 每日只需 5 次 FinMind 呼叫（含 0050 比較基準）
 
 
 def test_filters_step_sponsor_plan_uses_market_wide_groups(repo):

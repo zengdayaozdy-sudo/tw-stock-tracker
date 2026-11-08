@@ -12,9 +12,7 @@ from datetime import date, datetime
 
 from engine.config import TZ, load_settings
 
-PIPELINE_STEPS = [
-    ("holdings", "持股檢查"),
-]
+PIPELINE_STEPS: list[tuple[str, str]] = []
 
 
 def _parse_date(value: str | None) -> date:
@@ -348,6 +346,110 @@ def cmd_alert(args) -> None:
     print("系統警告：" + ("；".join(result["alerts"]) or "無"))
 
 
+def cmd_holdings(args) -> None:
+    from engine.db import connect
+    from engine.joblog import job_run
+    from engine.portfolio.monitor import run_holdings
+    from engine.repository import Repository
+
+    settings = load_settings()
+    as_of = _parse_date(args.date)
+    conn = connect()
+    with job_run(conn, "holdings", as_of) as run:
+        result = run_holdings(settings, Repository(conn), as_of)
+        run.note(status=result["status"], checked=result["checked"], sells=len(result["sell_signals"]),
+                 no_price=result.get("no_price", []))
+        if result["status"] == "closed":
+            run.skip("休市")
+    if result["status"] == "closed":
+        print("休市，不檢查持股")
+        return
+    print(f"檢查持股 {result['checked']} 檔，賣出提醒 {len(result['sell_signals'])} 筆")
+    for s in result["sell_signals"]:
+        print(f"  {s['stock_id']} {s['detail']['name'] or ''}：{s['reason']}")
+    if result.get("no_price"):
+        print(f"  當日無收盤價未檢查：{'、'.join(result['no_price'])}")
+
+
+def _price(x) -> str:
+    return "—" if x is None else f"{x:g}"
+
+
+def cmd_trade(args) -> None:
+    from engine.db import connect
+    from engine.portfolio.trades import TradeError, record_trade
+    from engine.repository import Repository
+
+    settings = load_settings()
+    conn = connect()
+    repo = Repository(conn)
+    if args.action == "list":
+        for t in repo.trades():
+            side = "買" if t["side"] == "buy" else "賣"
+            print(f"  {t['date']} {side} {t['stock_id']} {t['shares']:,} 股 @ {t['price']:g}  "
+                  f"手續費 {t['fee']:,.0f} 稅 {t['tax']:,.0f}  {t['note'] or ''}")
+        print("目前持股：")
+        for h in repo.holdings():
+            print(f"  {h['stock_id']} {h['shares']:,} 股  成本 {h['avg_cost']:,.2f}  停損 {_price(h['stop_loss'])}  "
+                  f"停利 {_price(h['take_profit'])}  自 {h['opened_date']}")
+        return
+    if args.stock is None or args.price is None or (args.shares is None and args.lots is None):
+        raise SystemExit("用法：trade buy|sell 股票代號 價格 股數（或 --lots 張數）[--date YYYY-MM-DD]")
+    shares = args.shares if args.shares is not None else args.lots * settings.risk["position"]["lot_size"]
+    try:
+        result = record_trade(settings, repo, args.stock, _parse_date(args.date), args.action, args.price, shares,
+                              fee=args.fee, tax=args.tax, note=args.note)
+    except TradeError as e:
+        raise SystemExit(f"無法登錄：{e}") from e
+    t, h = result["trade"], result["holding"]
+    print(f"已登錄 {t['date']} {'買進' if t['side'] == 'buy' else '賣出'} {t['stock_id']} {t['shares']:,} 股 "
+          f"@ {t['price']:g}（手續費 {t['fee']:,.0f}、證交稅 {t['tax']:,.0f}）")
+    if t["signal_snapshot"]:
+        print(f"  對應訊號：{t['signal_snapshot']['date']} {t['signal_snapshot']['reason']}")
+    if h:
+        print(f"  持股：{h['shares']:,} 股，平均成本 {h['avg_cost']:,.2f}，停損 {_price(h['stop_loss'])}，"
+              f"停利 {_price(h['take_profit'])}")
+    else:
+        print("  已全部賣出")
+
+
+def cmd_stats(args) -> None:
+    from engine.db import connect
+    from engine.portfolio.stats import BENCHMARK_LABELS, portfolio_stats
+    from engine.repository import Repository
+
+    as_of = _parse_date(args.date)
+    st = portfolio_stats(Repository(connect()), as_of)
+
+    def pct(x):
+        return "—" if x is None else f"{x:+.2%}"
+
+    if not st["start"]:
+        print("尚無交易紀錄")
+        return
+    print(f"期間 {st['start']} 至 {st['end']}｜已實現交易 {st['closed_trades']} 筆（勝 {st['wins']}／敗 {st['losses']}）")
+    win_rate = "—" if st["win_rate"] is None else f"{st['win_rate']:.1%}"
+    print(f"勝率 {win_rate}｜平均獲利 {pct(st['avg_win_pct'])}｜平均虧損 {pct(st['avg_loss_pct'])}"
+          f"｜期望值 {pct(st['expectancy_pct'])}")
+    print(f"已實現損益 {st['realized_pnl']:,} 元｜未實現損益 {st['unrealized_pnl']:,} 元｜"
+          f"平均持有 {st['avg_holding_days'] or '—'} 天")
+    bench = "｜".join(f"{BENCHMARK_LABELS[k]} {pct(v)}" for k, v in st["benchmarks"].items())
+    print(f"整體績效（佔總資金）{pct(st['portfolio_return'])}｜同期 {bench}")
+
+
+def cmd_capital(args) -> None:
+    from engine.db import connect
+    from engine.repository import Repository
+
+    repo = Repository(connect())
+    if args.amount is not None:
+        if args.amount <= 0:
+            raise SystemExit("總資金必須大於 0")
+        repo.set_setting("total_capital", args.amount)
+        repo.conn.commit()
+    print(f"總資金：{float(repo.setting('total_capital', 0)):,.0f} 元")
+
+
 def cmd_step(args) -> None:
     label = dict(PIPELINE_STEPS)[args.command]
     raise SystemExit(f"「{label}」尚未實作（{_parse_date(args.date)}）")
@@ -410,6 +512,30 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("alert", help="只檢查並推播系統警告")
     p.add_argument("--date")
     p.set_defaults(func=cmd_alert)
+
+    p = sub.add_parser("holdings", help="每日持股檢查（停損、移動停利、分數、持有過久）")
+    p.add_argument("--date")
+    p.set_defaults(func=cmd_holdings)
+
+    p = sub.add_parser("trade", help="登錄買賣或列出交易日誌")
+    p.add_argument("action", choices=["buy", "sell", "list"])
+    p.add_argument("stock", nargs="?")
+    p.add_argument("price", nargs="?", type=float)
+    p.add_argument("shares", nargs="?", type=int, help="股數（一張 = 1000 股）")
+    p.add_argument("--lots", type=int, help="以張數登錄")
+    p.add_argument("--date", help="成交日，預設今天")
+    p.add_argument("--fee", type=float, help="手續費，省略則依 risk.yaml 計算")
+    p.add_argument("--tax", type=float, help="證交稅，省略則依 risk.yaml 計算")
+    p.add_argument("--note")
+    p.set_defaults(func=cmd_trade)
+
+    p = sub.add_parser("stats", help="交易日誌統計（勝率、期望值、與大盤及 0050 比較）")
+    p.add_argument("--date")
+    p.set_defaults(func=cmd_stats)
+
+    p = sub.add_parser("capital", help="查看或設定總資金（影響建議張數）")
+    p.add_argument("amount", nargs="?", type=float)
+    p.set_defaults(func=cmd_capital)
 
     for name, label in PIPELINE_STEPS:
         p = sub.add_parser(name, help=label)

@@ -34,6 +34,10 @@ pe_river:                      # 本益比河流圖：以自身近 N 年本益�
 
 exit:
   max_holding_days_no_gain: 20 # 持有超過此交易日數未上漲則提醒換股
+  no_gain_threshold: 0.0       # 「未上漲」：收盤相對成本漲幅 ≤ 此值
+  min_score: 50                # 短線與中長線分數都低於此值 → 分數跌出門檻
+  trailing_activation: 0.05    # 最高收盤曾高於成本 5% 以上才啟動移動停利
+  signal_lookback_days: 5      # 登錄交易時，採用幾天內的訊號作為快照與停損停利
 
 entry_conditions:
   - above_ma60                 # 站上季線

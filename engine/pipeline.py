@@ -49,7 +49,9 @@ def universe(settings: Settings, repo: Repository) -> list[str]:
     if limit and len(ids) > limit:
         log.warning("自選股 %d 檔超過免費模式上限 %d，只處理前 %d 檔", len(ids), limit, limit)
         ids = ids[:limit]
-    return ids
+    # 持股一定要追蹤（評分、濾網、賣出提醒），即使已從自選股移除
+    held = repo.holding_ids()
+    return sorted(set(ids) | set(held)) if held else ids
 
 
 def fetch_daily(

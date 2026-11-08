@@ -216,3 +216,12 @@ def parse_foreign_futures_oi(rows: list[dict]) -> list[dict]:
             continue
         out.append({"series": "foreign_tx_oi", "date": date.fromisoformat(r["date"]), "value": long_oi - short_oi})
     return out
+
+
+def parse_close_series(rows: list[dict], series: str) -> list[dict]:
+    """台股（含 ETF）收盤價轉成時間序列，例如 0050 作為績效比較基準。"""
+    return [
+        {"series": series, "date": date.fromisoformat(r["date"]), "value": to_number(r.get("close"))}
+        for r in rows
+        if to_number(r.get("close"))
+    ]
