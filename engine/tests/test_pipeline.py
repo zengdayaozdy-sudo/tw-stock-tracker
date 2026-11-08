@@ -63,3 +63,10 @@ def test_expected_periods():
     assert expected_quarter_period(date(2026, 11, 14)) == "2026Q3"
     assert expected_quarter_period(date(2026, 2, 1)) == "2025Q3"
     assert expected_quarter_period(date(2026, 4, 1)) == "2025Q4"
+
+
+def test_odd_lot_only_is_not_error():
+    rows = [_price("1538", open=None, high=None, low=None, close=None, volume=386)]
+    assert check_prices(rows, date(2026, 11, 9), []).ok
+    rows = [_price("2330", open=None, high=None, low=None, close=None, volume=5000)]
+    assert not check_prices(rows, date(2026, 11, 9), []).ok

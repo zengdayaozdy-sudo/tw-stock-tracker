@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import date
 
+ONE_LOT = 1000  # 一張 = 1,000 股
+
 
 @dataclass
 class QualityReport:
@@ -41,7 +43,8 @@ def check_prices(rows: list[dict], trade_date: date, expected_ids: list[str], mi
         o, h, lo, c = r.get("open"), r.get("high"), r.get("low"), r.get("close")
         sid = r["stock_id"]
         if c is None:
-            if (r.get("volume") or 0) > 0:
+            # 只有零股成交（不到一張）時沒有收盤價，屬正常
+            if (r.get("volume") or 0) >= ONE_LOT:
                 report.errors.append(f"{sid} 有成交量但沒有收盤價")
             continue  # 當日無成交
         if c <= 0:
