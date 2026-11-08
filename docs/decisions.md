@@ -53,3 +53,11 @@
 | 2026-11-08 | 同一檔同一天只提醒一次，紀錄寫在 job_logs（intraday_alert），程式重啟也不重複 | 規格要求；避免每 3 分鐘重複推播 |
 | 2026-11-08 | 每輪重新連線資料庫；失敗時依 30／60／120／300 秒重試，不結束程式；成功才寫心跳 | Neon 閒置會斷線；心跳代表真的有檢查成功 |
 | 2026-11-08 | 本機金鑰放在專案根目錄 .env，程式啟動時讀取（不覆寫已存在的環境變數）；launchd 設定檔不含金鑰 | .env 已被 .gitignore 排除 |
+| 2026-11-09 | 網站使用 Next.js 16（Middleware 已更名為 Proxy）；未登入檢查放在 proxy.ts，每個頁面與 Server Action 再驗證一次 | 依 Next.js 官方驗證指引，proxy 只做樂觀檢查 |
+| 2026-11-09 | Session 為 HMAC 簽章 token（Web Crypto），存在 HTTP-only cookie，30 天到期；密碼錯誤延遲 0.8 秒 | 單一密碼自用，不需要使用者資料表 |
+| 2026-11-09 | 資料庫存取用 postgres（postgres.js 4），關閉 prepared statements 以相容 Neon pooled 連線；numeric 轉 number、date 保持字串 | 避免時區轉換造成日期錯一天 |
+| 2026-11-09 | 網站登錄交易以 TypeScript 重寫與 Python 相同的規則（手續費、證交稅、平均成本、停損），並用相同測試案例驗證兩邊一致 | Vercel 無法執行 Python 引擎 |
+| 2026-11-09 | 方案、功能開關、費用與風控規則由每日排程 sync-config 寫入 settings.runtime_config，網站讀取 | 網站不依賴 repo 根目錄的設定檔，Vercel 只部署 web/ |
+| 2026-11-09 | 網站新增的自選股由每日排程 backfill-new 自動回補 3 年歷史（每次最多 10 檔） | 網站無法直接呼叫 FinMind 回補 |
+| 2026-11-09 | 圖表用 TradingView Lightweight Charts v5：K 線、5／20／60 日均線、成交量獨立窗格、買賣訊號標記；滑鼠滾輪不縮放圖表 | 手機與桌面捲動頁面時不會被圖表攔截 |
+| 2026-11-09 | 介面配色採台股慣例紅漲綠跌；支援深色模式；數字等寬對齊 | 規格要求資訊密度高、數字對齊、去除通用模板外觀 |

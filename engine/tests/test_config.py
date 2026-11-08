@@ -64,3 +64,15 @@ def test_migrations_cover_all_tables():
     ]:
         assert f"CREATE TABLE IF NOT EXISTS {table} " in sql, table
     assert "published_date" in sql
+
+
+def test_runtime_config_for_website():
+    from engine.cli import runtime_config
+
+    free = runtime_config(load_settings("free"))
+    assert free["plan"] == "free" and free["watchlist_limit"] == 100
+    assert free["features"]["broker_branches"] == {"label": "券商分點籌碼", "enabled": False}
+    assert free["risk"]["costs"]["commission_rate"] == 0.001425
+    assert free["finmind_hourly_budget"] == 540
+    pro = runtime_config(load_settings("pro"))
+    assert pro["features"]["broker_branches"]["enabled"] and pro["watchlist_limit"] is None

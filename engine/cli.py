@@ -474,6 +474,53 @@ def cmd_monitor(args) -> None:
     Monitor(settings, connect, quotes, line, ExchangeClient(settings, http).holidays).run_forever()
 
 
+def runtime_config(settings) -> dict:
+    """網站要用的設定快照（方案、鎖定功能、費用與風控規則），由每日排程寫入 settings。"""
+    fm = settings.sources["finmind"]
+    return {
+        "plan": settings.plan.name,
+        "plan_label": settings.plan.label,
+        "universe": settings.plan.universe,
+        "watchlist_limit": settings.plan.watchlist_limit,
+        "features": {k: {"label": v, "enabled": settings.enabled(k)} for k, v in settings.all_features.items()},
+        "risk": {k: settings.risk[k] for k in ("costs", "stop_loss", "take_profit", "exit", "position")},
+        "finmind_hourly_budget": int(fm["hourly_limit"][settings.plan.name] * fm.get("safety_margin", 0.9)),
+        "min_history_days": settings.scoring["min_history_days"],
+        "updated_at": datetime.now(TZ).isoformat(),
+    }
+
+
+def cmd_sync_config(_args) -> None:
+    from engine.db import connect
+    from engine.repository import Repository
+
+    repo = Repository(connect())
+    repo.set_setting("runtime_config", runtime_config(load_settings()))
+    repo.conn.commit()
+    print("已同步網站設定快照")
+
+
+def cmd_backfill_new(args) -> None:
+    """自選股或持股中歷史不足者自動回補（網站新增自選股後由每日排程補齊）。"""
+    from engine.joblog import job_run
+    from engine.pipeline import backfill, universe
+
+    settings, conn, repo, _exchange, finmind = _services()
+    ids = universe(settings, repo)
+    need = settings.scoring["min_history_days"]
+    with conn.cursor() as cur:
+        cur.execute("SELECT stock_id, count(*) FROM daily_prices WHERE stock_id = ANY(%s) GROUP BY 1", (ids,))
+        counts = dict(cur.fetchall())
+    todo = [s for s in ids if counts.get(s, 0) < need][: args.limit]
+    if not todo:
+        print("沒有需要回補的股票")
+        return
+    with job_run(conn, "backfill", _parse_date(None)) as run:
+        result = backfill(repo, finmind, todo, args.years, _parse_date(None))
+        run.note(stocks=todo, years=args.years, counts=result, auto=True)
+    print(f"已回補 {'、'.join(todo)}：{json.dumps(result, ensure_ascii=False)}")
+
+
 def cmd_step(args) -> None:
     label = dict(PIPELINE_STEPS)[args.command]
     raise SystemExit(f"「{label}」尚未實作（{_parse_date(args.date)}）")
@@ -560,6 +607,13 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("capital", help="查看或設定總資金（影響建議張數）")
     p.add_argument("amount", nargs="?", type=float)
     p.set_defaults(func=cmd_capital)
+
+    sub.add_parser("sync-config", help="把方案與風控設定寫入資料庫供網站使用").set_defaults(func=cmd_sync_config)
+
+    p = sub.add_parser("backfill-new", help="自動回補歷史不足的自選股與持股")
+    p.add_argument("--years", type=int, default=3)
+    p.add_argument("--limit", type=int, default=10, help="每次最多回補幾檔（控制 FinMind 額度）")
+    p.set_defaults(func=cmd_backfill_new)
 
     p = sub.add_parser("monitor", help="盤中停損監控常駐程式（交易時間每隔數分鐘檢查持股）")
     p.add_argument("--once", action="store_true", help="立即檢查一次就結束（不論是否在交易時間）")

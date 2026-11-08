@@ -36,7 +36,7 @@ python -m engine.cli alert        # 只檢查並推播系統警告（排程任�
 - [x] 6. LINE 每日報告與系統警告
 - [x] 7. 持股追蹤、賣出提醒、交易日誌統計
 - [x] 8. 盤中停損監控（常駐在擁有者的 Mac）
-- [ ] 9. 個人網站
+- [x] 9. 個人網站（Next.js，密碼保護）
 - [ ] 10. 回測
 - [ ] 11. 排程與維運文件
 
@@ -50,10 +50,36 @@ python -m engine.cli alert        # 只檢查並推播系統警告（排程任�
 | 證交所／櫃買資料欄位 probe | 完成，2026-11-06 全市場實際抓取通過（約 1,980 檔，26 秒） |
 | 股票清單、產業族群、自訂族群 | 完成：1,990 家公司、35 個產業族群＋5 個自訂族群 |
 | LINE Messaging API（LINE_CHANNEL_ACCESS_TOKEN、LINE_OWNER_USER_ID） | 待擁有者設定（未設定時報告只輸出到排程記錄，不會推播）；設定方式：`gh secret set LINE_CHANNEL_ACCESS_TOKEN`、`gh secret set LINE_OWNER_USER_ID` |
-| Vercel 專案（root 設為 web/，環境變數 DATABASE_URL、SITE_PASSWORD、SESSION_SECRET） | 第 9 階段建立 |
+| Vercel 專案（root 設為 web/，環境變數 DATABASE_URL、SITE_PASSWORD、SESSION_SECRET） | 程式已完成，待擁有者在 Vercel 匯入（見「個人網站」） |
 | 自選股 | 擁有者在程式完成後自行加入 |
 
-## 交易日誌（網站完成前用指令登錄）
+## 個人網站（web/）
+
+Next.js 16（App Router）＋TypeScript，部署在 Vercel，單一密碼登入（HTTP-only cookie），未登入時所有頁面與 API 都無法存取。
+
+| 頁面 | 內容 |
+|---|---|
+| 總覽 `/` | 大盤燈號與各輸入依據、今日買進訊號、族群強弱、持股與賣出提醒、系統狀態 |
+| 族群 `/groups` | 族群排名（相對大盤報酬、平均分數、弱勢）與成分股排行 |
+| 個股 `/stocks/代號` | K 線＋均線＋成交量＋訊號標記、評分拆解、參考價位、排雷紀錄、事件（可登錄法說會）、財報狗與 Goodinfo 連結 |
+| 自選股 `/watchlist` | 新增／移除自選股（下一次排程自動回補歷史）、維護自訂族群 |
+| 持股與交易 `/portfolio` | 登錄買賣（自動計算費用、記錄當時分數與訊號）、持股、勝率與期望值、與加權指數及 0050 比較 |
+| 設定 `/settings` | 總資金、通知開關、方案功能（鎖頭標示升級後可用） |
+| 系統狀態 `/status` | 排程紀錄、資料完整性、FinMind 額度、盤中監控心跳 |
+
+**Vercel 設定**：Import 本 repo → Root Directory 設為 `web` → 環境變數：
+
+| 名稱 | 說明 |
+|---|---|
+| `DATABASE_URL` | Neon 連線字串（建議用 pooled 連線） |
+| `SITE_PASSWORD` | 網站登入密碼 |
+| `SESSION_SECRET` | 至少 16 字元的隨機字串，例如 `openssl rand -hex 32` 的輸出 |
+
+推送到 `main` 即自動部署。方案、費用與風控規則由每日排程的 `sync-config` 寫入資料庫，網站與引擎使用同一份設定。
+
+本機開發：`cd web && npm install && npm run dev`（`web/.env.local` 放上述三個變數）。
+
+## 交易日誌（也可用指令登錄）
 
 ```bash
 python -m engine.cli capital 1500000                         # 設定總資金（影響建議張數）
@@ -89,7 +115,7 @@ python -m engine.cli monitor --once  # 先手動檢查一次確認設定正確
 ## 交給 Claude Code 接手
 
 1. 用 Claude Code 開啟本 repo
-2. 指示：「讀 CLAUDE.md、README.md、docs/open-questions.md，從第 14 節第 9 階段開始開發」
+2. 指示：「讀 CLAUDE.md、README.md、docs/open-questions.md，從第 14 節第 10 階段開始開發」
 3. 消息面判讀目前用關鍵字（排程預設 `AI_PROVIDER=rules`）；要改用 Claude，在 GitHub Variables 設 `AI_PROVIDER=claude` 並加 `ANTHROPIC_API_KEY` Secret（見 docs/open-questions.md #13）
 4. 第 6 階段（LINE）前，擁有者需在 GitHub Secrets 加上 `LINE_CHANNEL_ACCESS_TOKEN`、`LINE_OWNER_USER_ID`
 5. 第 9 階段（網站）前，在 Vercel 匯入本 repo，Root Directory 設為 `web`，並設定 `DATABASE_URL`、`SITE_PASSWORD`、`SESSION_SECRET`

@@ -39,8 +39,12 @@ jobs:
       - run: pip install -e ".[claude]"
       - name: 套用資料庫結構
         run: python -m engine.cli migrate
+      - name: 同步網站設定
+        run: python -m engine.cli sync-config
       - name: 抓取資料與完整性檢查
         run: python -m engine.cli fetch ${{ inputs.date && format('--date {0}', inputs.date) || '' }}
+      - name: 回補新加入的自選股
+        run: python -m engine.cli backfill-new
       - name: 流動性過濾
         run: python -m engine.cli liquidity ${{ inputs.date && format('--date {0}', inputs.date) || '' }}
       - name: 消息面排雷
