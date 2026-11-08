@@ -27,7 +27,7 @@ finmind:
     broker_report: TaiwanStockTradingDailyReport        # Sponsor（單檔）；全市場需 Sponsor Pro
 
 twse:
-  verified: false
+  verified: true   # 2026-11-08 probe 確認；T86 三大法人需於交易日再確認
   endpoints:
     daily_all: https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL
     valuation_all: https://openapi.twse.com.tw/v1/exchangeReport/BWIBBU_ALL
@@ -39,7 +39,7 @@ twse:
     taiex_history: https://www.twse.com.tw/rwd/zh/TAIEX/MI_5MINS_HIST?date={date}&response=json
 
 tpex:
-  verified: false
+  verified: true   # 2026-11-08 probe 確認
   endpoints:
     daily_all: https://www.tpex.org.tw/openapi/v1/tpex_mainboard_daily_close_quotes
     valuation_all: https://www.tpex.org.tw/openapi/v1/tpex_mainboard_peratio_analysis

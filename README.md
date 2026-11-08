@@ -25,3 +25,22 @@ pytest -q
 - [ ] 9. 個人網站
 - [ ] 10. 回測
 - [ ] 11. 排程與維運文件
+
+## 已完成的前置設定
+
+| 項目 | 狀態 |
+|---|---|
+| GitHub 私人 repo、CI | 完成 |
+| Neon 資料庫（專案 tw-stock-tracker，round-violet-78597036） | 完成，migration 001、002 已套用 |
+| GitHub Secrets：DATABASE_URL、FINMIND_TOKEN | 完成 |
+| 證交所／櫃買資料欄位 probe | 完成 |
+| 股票清單、產業族群、自訂族群 | 完成（手動操作 → companies、seed-groups） |
+| LINE Messaging API（LINE_CHANNEL_ACCESS_TOKEN、LINE_OWNER_USER_ID） | 第 6 階段前由擁有者設定 |
+| Vercel 專案（root 設為 web/，環境變數 DATABASE_URL、SITE_PASSWORD、SESSION_SECRET） | 第 9 階段建立 |
+| 自選股 | 擁有者在程式完成後自行加入 |
+
+## 手動操作（GitHub → Actions → 手動操作 → Run workflow）
+
+- `watch-add` 參數填股票代號（空白分隔）加入自選股；`backfill` 回補自選股 3 年歷史
+- `companies` 更新公司資料與股數；`seed-groups` 依 config/groups.yaml 建立族群
+- 每日收盤後批次可指定日期補跑

@@ -178,7 +178,9 @@ def cmd_probe(args) -> None:
                 print(f"\n[{market}.{key}] 筆數={len(rows) if isinstance(rows, list) else '?'}")
                 if fields:
                     print("  fields:", fields)
-                print("  sample:", json.dumps(sample, ensure_ascii=False)[:600])
+                if isinstance(sample, dict):
+                    print("  keys:", list(sample.keys()))
+                print("  sample:", json.dumps(sample, ensure_ascii=False)[:400])
             except Exception as e:
                 print(f"\n[{market}.{key}] 失敗：{e}")
 

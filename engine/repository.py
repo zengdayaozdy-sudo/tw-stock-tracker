@@ -69,13 +69,28 @@ class Repository:
         rows = list(rows)
         with self.conn.cursor() as cur:
             cur.executemany(
-                "INSERT INTO stocks (stock_id, name, market, industry, listed_date) VALUES (%s, %s, %s, %s, %s) "
+                "INSERT INTO stocks (stock_id, name, market, industry, listed_date, shares) "
+                "VALUES (%s, %s, %s, %s, %s, %s) "
                 "ON CONFLICT (stock_id) DO UPDATE SET name = EXCLUDED.name, market = EXCLUDED.market, "
                 "industry = COALESCE(EXCLUDED.industry, stocks.industry), "
-                "listed_date = COALESCE(EXCLUDED.listed_date, stocks.listed_date), updated_at = now()",
-                [(r["stock_id"], r["name"], r["market"], r.get("industry"), r.get("listed_date")) for r in rows],
+                "listed_date = COALESCE(EXCLUDED.listed_date, stocks.listed_date), "
+                "shares = COALESCE(EXCLUDED.shares, stocks.shares), updated_at = now()",
+                [
+                    (r["stock_id"], r["name"], r["market"], r.get("industry"), r.get("listed_date"), r.get("shares"))
+                    for r in rows
+                ],
             )
         return len(rows)
+
+    def update_market_caps(self, trade_date: date) -> int:
+        """市值 = 發行股數 × 當日收盤價。"""
+        with self.conn.cursor() as cur:
+            cur.execute(
+                "UPDATE stocks s SET market_cap = s.shares * p.close FROM daily_prices p "
+                "WHERE p.stock_id = s.stock_id AND p.date = %s AND s.shares IS NOT NULL AND p.close IS NOT NULL",
+                (trade_date,),
+            )
+            return cur.rowcount
 
     def set_status_flags(self, flags: dict[str, set[str]]) -> None:
         with self.conn.cursor() as cur:

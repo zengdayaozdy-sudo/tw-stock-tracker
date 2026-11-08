@@ -79,6 +79,7 @@ def fetch_daily(
     if new_stocks:
         repo.upsert_stocks(new_stocks)
     result.counts["prices"] = repo.upsert("daily_prices", prices)
+    result.counts["market_caps"] = repo.update_market_caps(trade_date)
 
     ids = universe(settings, repo)
     result.quality = check_prices(prices, trade_date, ids, MIN_MARKET_ROWS)
