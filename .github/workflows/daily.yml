@@ -35,3 +35,5 @@ jobs:
         run: python -m engine.cli migrate
       - name: 抓取資料與完整性檢查
         run: python -m engine.cli fetch ${{ inputs.date && format('--date {0}', inputs.date) || '' }}
+      - name: 三面向評分
+        run: python -m engine.cli score ${{ inputs.date && format('--date {0}', inputs.date) || '' }}

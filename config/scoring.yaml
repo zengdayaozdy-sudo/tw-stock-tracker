@@ -46,3 +46,44 @@ min_industry_size: 10            # 付費模式：產業少於此檔數改與全
 selection:
   top_percent: 0.05              # 付費模式入選門檻
   per_group_top_n: 3             # 免費模式每個族群列出前幾名
+
+# ---------- 計分細節 ----------
+lookback_years: 3                 # 與自身歷史比較的期間
+min_observations:                 # 自身歷史至少要有幾筆才比較
+  daily: 60
+  monthly: 12
+  quarterly: 4
+max_stale_days:                   # 資料超過幾天沒更新視為缺值
+  daily: 7
+  monthly: 75
+  quarterly: 200
+min_peers: 3                      # 免費模式同族群至少幾檔才比較
+
+revenue_components:               # 月營收指標內部組成
+  yoy: 0.60                       # 近 3 個月平均年增率（百分位）
+  streak: 0.25                    # 連續年增月數
+  new_high: 0.15                  # 營收創新高
+  streak_cap_months: 6
+  new_high_lookback_months: 12
+
+horizon_overrides:                # 依短線／中長線調整單一指標權重，其餘等比例縮放
+  short:
+    chips:
+      broker_branches: 0.30
+  long:
+    chips:
+      broker_branches: 0.10
+
+small_cap:
+  market_cap_threshold: 30000000000   # 300 億以下視為中小型股
+  trust_weight_boost: 1.5             # 投信權重加成
+
+large_cap_top_n: 150              # 付費模式：市值前 N 名為大型股組
+
+params:
+  rsi_period: 14
+  kd_period: 9
+  macd: [12, 26, 9]
+  chips_net_days: 5
+  holding_change_days: 20
+  margin_change_days: 5

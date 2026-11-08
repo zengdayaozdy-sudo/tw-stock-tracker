@@ -14,3 +14,5 @@
 | 8 | 費城半導體、台積電 ADR、台指期未平倉的免費資料來源 | 第 4 階段確認 |
 | 9 | 回測採用 FinLab 或開源套件 | 第 10 階段決定，寫入 decisions.md |
 | 10 | 盤中監控常駐程式要跑在哪台電腦（作業系統） | 待擁有者回覆 |
+| 11 | FinMind 財報 type 名稱（EPS、GrossProfit、OperatingIncome、IncomeAfterTaxes、Equity、Liabilities、TotalAssets）需實測確認，名稱寫在 engine/scoring/indicators.py 的 METRIC_KEYS | 回補資料後檢查評分拆解是否還有「資料缺漏」 |
+| 12 | 免費模式沒有市值資料，投信對中小型股的權重加成暫時不會生效 | 第 4 階段用股本×股價補市值 |

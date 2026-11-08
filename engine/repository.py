@@ -12,6 +12,7 @@ UPSERT_SPECS: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
     "daily_prices": (("stock_id", "date"), ("open", "high", "low", "close", "volume", "turnover")),
     "valuations": (("stock_id", "date"), ("pe", "pb", "dividend_yield")),
     "financials": (("stock_id", "period_type", "period"), ("published_date", "metrics")),
+    "scores": (("stock_id", "date", "horizon"), ("total", "fundamental", "technical", "chips", "breakdown", "status")),
 }
 
 # chips 由多個來源分批寫入，只更新本次有提供的欄位

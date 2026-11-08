@@ -15,7 +15,6 @@ from engine.config import TZ, load_settings
 PIPELINE_STEPS = [
     ("liquidity", "流動性過濾"),
     ("news", "消息面排雷"),
-    ("score", "三面向評分"),
     ("filters", "大盤燈號與族群強弱濾網"),
     ("signals", "買進訊號與參考價位"),
     ("holdings", "持股檢查"),
@@ -184,6 +183,35 @@ def cmd_probe(args) -> None:
                 print(f"\n[{market}.{key}] 失敗：{e}")
 
 
+def cmd_score(args) -> None:
+    from engine.db import connect
+    from engine.joblog import job_run
+    from engine.pipeline import universe
+    from engine.repository import Repository
+    from engine.scoring.loader import load_frames, load_groups, save_scores
+    from engine.scoring.model import reasons, score_universe
+
+    settings = load_settings()
+    as_of = _parse_date(args.date)
+    conn = connect()
+    repo = Repository(conn)
+    with job_run(conn, "score", as_of) as run:
+        ids = universe(settings, repo)
+        frames = load_frames(repo, ids, as_of, settings.scoring["lookback_years"])
+        results = score_universe(settings, frames, load_groups(repo), as_of)
+        n = save_scores(repo, results)
+        ok = [r for r in results if r.status == "ok"]
+        run.note(scored=len(ok), insufficient=len(results) - len(ok), rows=n)
+    for h, label in (("short", "短線"), ("long", "中長線")):
+        top = sorted((r for r in ok if r.horizon == h), key=lambda r: r.total, reverse=True)[:10]
+        print(f"\n{label}前 10 名")
+        for r in top:
+            print(f"  {r.stock_id}  {r.total:6.1f}  {'、'.join(reasons(r.breakdown))}")
+    skipped = {r.stock_id: r.breakdown.get("reason") for r in results if r.status != "ok"}
+    for sid, reason in skipped.items():
+        print(f"  {sid} 未評分：{reason}")
+
+
 def cmd_step(args) -> None:
     label = dict(PIPELINE_STEPS)[args.command]
     raise SystemExit(f"「{label}」尚未實作（{_parse_date(args.date)}）")
@@ -214,6 +242,10 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("probe", help="確認證交所／櫃買資料欄位")
     p.add_argument("--date")
     p.set_defaults(func=cmd_probe)
+
+    p = sub.add_parser("score", help="三面向評分")
+    p.add_argument("--date")
+    p.set_defaults(func=cmd_score)
 
     for name, label in PIPELINE_STEPS:
         p = sub.add_parser(name, help=label)
