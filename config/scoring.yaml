@@ -46,6 +46,7 @@ min_industry_size: 10            # 付費模式：產業少於此檔數改與全
 selection:
   top_percent: 0.05              # 付費模式入選門檻
   per_group_top_n: 3             # 免費模式每個族群列出前幾名
+  min_total: 60                  # 總分低於此值不進名單（避免弱族群的前幾名也入選）
 
 # ---------- 計分細節 ----------
 lookback_years: 3                 # 與自身歷史比較的期間

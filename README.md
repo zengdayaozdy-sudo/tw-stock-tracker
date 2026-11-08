@@ -20,6 +20,7 @@ python -m engine.cli liquidity    # 流動性過濾
 python -m engine.cli news         # 消息面排雷（AI 判讀，連不上時改用關鍵字）
 python -m engine.cli score        # 三面向評分
 python -m engine.cli filters      # 大盤燈號、族群強弱、事件行事曆
+python -m engine.cli signals      # 買進訊號、參考價位、建議張數（資料不完整時暫停）
 ```
 
 ## 開發進度
@@ -28,7 +29,7 @@ python -m engine.cli filters      # 大盤燈號、族群強弱、事件行事�
 - [x] 2. 資料來源、額度管理、完整性檢查
 - [x] 3. 評分引擎
 - [x] 4. 濾網（流動性、消息面排雷、大盤燈號、族群強弱、事件行事曆）
-- [ ] 5. 訊號與風控
+- [x] 5. 訊號與風控（入選名單、進場條件、參考價位、風控張數）
 - [ ] 6. LINE 報告
 - [ ] 7. 持股追蹤與交易日誌
 - [ ] 8. 盤中停損監控
@@ -58,7 +59,7 @@ python -m engine.cli filters      # 大盤燈號、族群強弱、事件行事�
 ## 交給 Claude Code 接手
 
 1. 用 Claude Code 開啟本 repo
-2. 指示：「讀 CLAUDE.md、README.md、docs/open-questions.md，從第 14 節第 5 階段開始開發」
+2. 指示：「讀 CLAUDE.md、README.md、docs/open-questions.md，從第 14 節第 6 階段開始開發」
 3. 消息面判讀目前用關鍵字（排程預設 `AI_PROVIDER=rules`）；要改用 Claude，在 GitHub Variables 設 `AI_PROVIDER=claude` 並加 `ANTHROPIC_API_KEY` Secret（見 docs/open-questions.md #13）
 4. 第 6 階段（LINE）前，擁有者需在 GitHub Secrets 加上 `LINE_CHANNEL_ACCESS_TOKEN`、`LINE_OWNER_USER_ID`
 5. 第 9 階段（網站）前，在 Vercel 匯入本 repo，Root Directory 設為 `web`，並設定 `DATABASE_URL`、`SITE_PASSWORD`、`SESSION_SECRET`

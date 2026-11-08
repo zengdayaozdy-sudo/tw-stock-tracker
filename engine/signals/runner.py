@@ -1,0 +1,155 @@
+"""買進訊號步驟（第 4 節步驟 7）：名單 → 濾網 → 進場條件 → 參考價位 → 風控張數。
+
+資料完整性檢查未通過時暫停當日訊號（第 4 節步驟 2）。重跑同一天會覆寫當日買進訊號。
+"""
+
+from __future__ import annotations
+
+from datetime import date
+from typing import Any
+
+from engine.config import Settings
+from engine.filters.runner import screen_summary
+from engine.pipeline import universe
+from engine.repository import Repository
+from engine.scoring.loader import load_frames, load_groups
+from engine.scoring.model import reasons
+from engine.signals.entry import entry_triggers, trigger_text
+from engine.signals.levels import compute_levels
+from engine.signals.selection import select
+from engine.signals.sizing import position_size
+
+HORIZON_LABELS = {"short": "短線", "long": "中長線"}
+
+
+def quality_gate(repo: Repository, as_of: date) -> tuple[bool, str]:
+    """回傳 (可以發訊號, 原因)。"""
+    job = repo.latest_job("fetch", as_of)
+    if job is None:
+        return False, "當日尚未執行資料抓取"
+    status, detail = job
+    if status == "skipped":
+        return False, "休市或官方資料尚未更新"
+    if status != "success":
+        return False, f"資料抓取{('失敗' if status == 'failed' else '未完成')}"
+    quality = detail.get("quality") or {}
+    if quality.get("ok") is False:
+        errors = quality.get("errors") or []
+        return False, "資料完整性檢查未通過：" + "；".join(errors[:3])
+    return True, "資料完整"
+
+
+def _stock_groups(groups: dict[str, tuple[str, set[str]]]) -> dict[str, list[str]]:
+    """每檔股票用來計算族群曝險的族群：有自訂族群用自訂，否則用產業。"""
+    custom: dict[str, list[str]] = {}
+    industry: dict[str, list[str]] = {}
+    for name, (kind, members) in groups.items():
+        target = custom if kind == "custom" else industry
+        for sid in members:
+            target.setdefault(sid, []).append(name)
+    return {sid: custom.get(sid) or industry.get(sid) or [] for sid in set(custom) | set(industry)}
+
+
+def group_exposures(holdings: dict[str, float], stock_groups: dict[str, list[str]]) -> dict[str, float]:
+    out: dict[str, float] = {}
+    for sid, value in holdings.items():
+        for g in stock_groups.get(sid, []):
+            out[g] = out.get(g, 0.0) + value
+    return out
+
+
+def run_signals(settings: Settings, repo: Repository, as_of: date, force: bool = False) -> dict[str, Any]:
+    ok, gate_reason = quality_gate(repo, as_of)
+    if not ok and not force:
+        repo.replace_signals(as_of, "buy", [])
+        repo.conn.commit()
+        return {"status": "halted", "reason": gate_reason, "signals": [], "blocked": []}
+
+    ids = universe(settings, repo)
+    risk, scoring = settings.risk, settings.scoring
+    flags = screen_summary(repo, as_of)
+    light = repo.market_light(as_of)
+    groups = load_groups(repo)
+    scores = repo.score_rows(as_of, ids)
+    top_percent = settings.enabled("top_percent_list")
+
+    selected: dict[str, dict[str, list[str]]] = {}
+    for h in HORIZON_LABELS:
+        totals = {sid: r["total"] for (sid, hh), r in scores.items()
+                  if hh == h and r["status"] == "ok" and r["total"] is not None}
+        selected[h] = select(totals, groups, top_percent, scoring)
+    candidates = sorted(set().union(*(s.keys() for s in selected.values())))
+
+    capital = float(repo.setting("total_capital", 0) or 0)
+    holdings = repo.holdings_value(as_of)
+    stock_groups = _stock_groups(groups)
+    exposures = group_exposures(holdings, stock_groups)
+    names = repo.stock_names(candidates)
+    frames = load_frames(repo, candidates, as_of, risk["pe_river"]["lookback_years"]) if candidates else {}
+    position_cfg = risk["position"]
+
+    signals: list[dict] = []
+    blocked: list[dict] = []
+    for sid in candidates:
+        f = frames[sid]
+        triggers = entry_triggers(f.prices, f.chips, as_of, risk)
+        if not triggers:
+            continue
+        fl = flags.get(sid, {"exclude": [], "block": [], "warn": []})
+        if fl["exclude"] or fl["block"]:
+            blocked.append({"stock_id": sid, "name": names.get(sid), "triggers": trigger_text(triggers),
+                            "reasons": fl["exclude"] + fl["block"]})
+            continue
+        levels = compute_levels(f.prices, f.valuations, as_of, risk, bearish=light == "bearish")
+        if levels is None:
+            continue
+        exposure = max((exposures.get(g, 0.0) for g in stock_groups.get(sid, [])), default=0.0)
+        size = position_size(capital, levels.entry_high, levels.stop_loss, position_cfg,
+                             holdings_count=len(holdings), group_exposure=exposure, already_held=sid in holdings)
+        for h, label in HORIZON_LABELS.items():
+            if sid not in selected[h]:
+                continue
+            score = scores[(sid, h)]
+            why = reasons(score["breakdown"])
+            text = f"{label} {score['total']:.1f} 分；{'、'.join(trigger_text(triggers))}"
+            if why:
+                text += f"；高分理由：{'、'.join(why)}"
+            signals.append({
+                "stock_id": sid,
+                "date": as_of,
+                "horizon": h,
+                "side": "buy",
+                "triggers": list(triggers),
+                "entry_low": levels.entry_low,
+                "entry_high": levels.entry_high,
+                "stop_loss": levels.stop_loss,
+                "take_profit": levels.take_profit,
+                "suggested_lots": size["lots"],
+                "reason": text,
+                "detail": {
+                    "name": names.get(sid),
+                    "close": levels.close,
+                    "score": {k: score[k] for k in ("total", "fundamental", "technical", "chips")},
+                    "high_score_reasons": why,
+                    "selected_by": selected[h][sid],
+                    "triggers": triggers,
+                    "trigger_text": trigger_text(triggers),
+                    "levels": levels.detail,
+                    "sizing": size,
+                    "capital": capital,
+                    "market_light": light,
+                    "warnings": fl["warn"],
+                    "forced": not ok,
+                },
+            })
+
+    repo.replace_signals(as_of, "buy", signals)
+    repo.conn.commit()
+    return {
+        "status": "ok" if ok else "forced",
+        "reason": gate_reason,
+        "market_light": light,
+        "candidates": len(candidates),
+        "signals": signals,
+        "blocked": blocked,
+    }

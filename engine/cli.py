@@ -13,7 +13,6 @@ from datetime import date, datetime
 from engine.config import TZ, load_settings
 
 PIPELINE_STEPS = [
-    ("signals", "買進訊號與參考價位"),
     ("holdings", "持股檢查"),
     ("notify", "LINE 每日報告"),
 ]
@@ -269,6 +268,40 @@ def cmd_filters(args) -> None:
         print(f"  注意：{w}")
 
 
+def cmd_signals(args) -> None:
+    from engine.db import connect
+    from engine.joblog import job_run
+    from engine.repository import Repository
+    from engine.signals.runner import run_signals
+
+    settings = load_settings()
+    as_of = _parse_date(args.date)
+    conn = connect()
+    with job_run(conn, "signals", as_of) as run:
+        result = run_signals(settings, Repository(conn), as_of, force=args.force)
+        run.note(status=result["status"], reason=result["reason"], candidates=result.get("candidates", 0),
+                 signals=len(result["signals"]), blocked=result["blocked"])
+        if result["status"] == "halted":
+            run.skip(result["reason"])
+    if result["status"] == "halted":
+        print(f"暫停發出訊號：{result['reason']}")
+        raise SystemExit(2)
+    if result["status"] == "forced":
+        print(f"注意：{result['reason']}，以 --force 強制產生訊號")
+    print(f"候選 {result['candidates']} 檔，買進訊號 {len(result['signals'])} 筆")
+    for s in result["signals"]:
+        sz = s["detail"]["sizing"]
+        lots = f"{s['suggested_lots']} 張" if s["suggested_lots"] else (
+            f"零股 {sz['odd_shares']} 股" if sz.get("odd_shares") else "0 張")
+        print(f"  {s['stock_id']} {s['detail']['name'] or ''}  區間 {s['entry_low']:g}–{s['entry_high']:g}  "
+              f"停損 {s['stop_loss']:g}  停利 {s['take_profit']:g}  建議 {lots}")
+        print(f"    {s['reason']}")
+        for w in s["detail"]["warnings"] + sz.get("notes", []):
+            print(f"    提示：{w}")
+    for b in result["blocked"]:
+        print(f"  {b['stock_id']} 觸發{'、'.join(b['triggers'])}但未發訊號：{'、'.join(b['reasons'])}")
+
+
 def cmd_step(args) -> None:
     label = dict(PIPELINE_STEPS)[args.command]
     raise SystemExit(f"「{label}」尚未實作（{_parse_date(args.date)}）")
@@ -317,6 +350,11 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--date")
     p.add_argument("--no-refresh", action="store_true", help="不抓外部資料，只用資料庫既有資料重算")
     p.set_defaults(func=cmd_filters)
+
+    p = sub.add_parser("signals", help="買進訊號、參考價位、風控張數")
+    p.add_argument("--date")
+    p.add_argument("--force", action="store_true", help="資料完整性檢查未通過時仍產生訊號（除錯用）")
+    p.set_defaults(func=cmd_signals)
 
     for name, label in PIPELINE_STEPS:
         p = sub.add_parser(name, help=label)

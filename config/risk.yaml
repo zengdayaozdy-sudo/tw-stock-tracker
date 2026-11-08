@@ -8,12 +8,29 @@ position:
   lot_size: 1000               # 一張股數
 
 stop_loss:
-  method: percent              # percent / ma60
+  method: percent              # percent：進場參考價 −8%／ma60：跌破季線
   percent: 0.08
   bearish_market_percent: 0.05 # 大盤燈號偏空時收緊
+  ma60_buffer: 0.01            # ma60 法：季線再往下 1% 才算跌破
+  max_percent: 0.15            # ma60 法停損距離超過 15% 時改用 percent 法
 
 take_profit:
-  trailing_percent: 0.10       # 移動停利回落幅度
+  trailing_percent: 0.10       # 移動停利回落幅度（持股追蹤用）
+  resistance_lookback_days: 120  # 前波壓力：近 120 個交易日最高價
+  min_reward_pct: 0.05         # 壓力位至少要比進場價高 5% 才採用
+  reward_risk_ratio: 2.0       # 找不到壓力位時，目標 = 進場價 + 2 倍停損距離
+
+entry_zone:
+  chase_pct: 0.01              # 區間上緣 = 收盤價 +1%（不追高）
+  max_pullback: 0.08           # 支撐價離收盤價超過 8% 不採用
+  default_pullback: 0.03       # 找不到支撐時，下緣 = 收盤價 −3%
+  support_lookback_days: 20    # 近 20 日低點視為支撐
+
+pe_river:                      # 本益比河流圖：以自身近 N 年本益比分位推算價位
+  lookback_years: 3
+  low_pct: 0.2                 # 偏低區：本益比第 20 百分位
+  high_pct: 0.8                # 偏高區：本益比第 80 百分位
+  min_observations: 120
 
 exit:
   max_holding_days_no_gain: 20 # 持有超過此交易日數未上漲則提醒換股
@@ -23,8 +40,10 @@ entry_conditions:
   - ma_golden_cross            # 均線黃金交叉
   - volume_breakout_20d        # 帶量突破 20 日高點
   - institutional_buy_streak   # 法人連續買超
-institutional_buy_streak_days: 3
-volume_breakout_ratio: 1.5
+institutional_buy_streak_days: 3  # 外資＋投信合計連續買超天數
+volume_breakout_ratio: 1.5         # 成交量 ≥ 20 日均量 1.5 倍
+golden_cross_ma: [5, 20]           # 黃金交叉：5 日線由下往上穿越 20 日線
+breakout_days: 20
 
 costs:
   commission_rate: 0.001425    # 手續費

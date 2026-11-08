@@ -308,3 +308,73 @@ class Repository:
                 (on_date, list(ids)),
             )
             return cur.rowcount
+
+    # ---------- 訊號（第 5 階段） ----------
+    def latest_job(self, job: str, run_date: date) -> tuple[str, dict] | None:
+        with self.conn.cursor() as cur:
+            cur.execute(
+                "SELECT status, detail FROM job_logs WHERE job = %s AND run_date = %s "
+                "ORDER BY started_at DESC, log_id DESC LIMIT 1",
+                (job, run_date),
+            )
+            row = cur.fetchone()
+            return (row[0], row[1] or {}) if row else None
+
+    def score_rows(self, on_date: date, ids: list[str]) -> dict[tuple[str, str], dict]:
+        with self.conn.cursor() as cur:
+            cur.execute(
+                "SELECT stock_id, horizon, total, fundamental, technical, chips, breakdown, status FROM scores "
+                "WHERE date = %s AND stock_id = ANY(%s)",
+                (on_date, ids),
+            )
+            out = {}
+            for sid, h, total, f, t, c, b, status in cur.fetchall():
+                out[(sid, h)] = {
+                    "total": None if total is None else float(total),
+                    "fundamental": None if f is None else float(f),
+                    "technical": None if t is None else float(t),
+                    "chips": None if c is None else float(c),
+                    "breakdown": b or {},
+                    "status": status,
+                }
+            return out
+
+    def market_light(self, on_date: date) -> str | None:
+        with self.conn.cursor() as cur:
+            cur.execute("SELECT light FROM market WHERE date = %s", (on_date,))
+            row = cur.fetchone()
+            return row[0] if row else None
+
+    def setting(self, key: str, default: Any = None) -> Any:
+        with self.conn.cursor() as cur:
+            cur.execute("SELECT value FROM settings WHERE key = %s", (key,))
+            row = cur.fetchone()
+            return row[0] if row else default
+
+    def holdings_value(self, as_of: date) -> dict[str, float]:
+        """目前持股市值（股數 × as_of 當天以前最後收盤，查無收盤時用成本）。"""
+        with self.conn.cursor() as cur:
+            cur.execute(
+                "SELECT h.stock_id, h.shares * COALESCE(("
+                " SELECT close FROM daily_prices p WHERE p.stock_id = h.stock_id AND p.date <= %s"
+                " AND p.close IS NOT NULL ORDER BY p.date DESC LIMIT 1), h.avg_cost) FROM holdings h",
+                (as_of,),
+            )
+            return {s: float(v) for s, v in cur.fetchall()}
+
+    def stock_names(self, ids: list[str]) -> dict[str, str]:
+        with self.conn.cursor() as cur:
+            cur.execute("SELECT stock_id, name FROM stocks WHERE stock_id = ANY(%s)", (ids,))
+            return dict(cur.fetchall())
+
+    def replace_signals(self, on_date: date, side: str, rows: Iterable[dict]) -> int:
+        rows = list(rows)
+        cols = ("stock_id", "date", "horizon", "side", "triggers", "entry_low", "entry_high", "stop_loss",
+                "take_profit", "suggested_lots", "reason", "detail")
+        with self.conn.cursor() as cur:
+            cur.execute("DELETE FROM signals WHERE date = %s AND side = %s", (on_date, side))
+            cur.executemany(
+                f"INSERT INTO signals ({', '.join(cols)}) VALUES ({', '.join(['%s'] * len(cols))})",
+                [tuple(_adapt(r.get(c)) if c != "triggers" else r[c] for c in cols) for r in rows],
+            )
+        return len(rows)

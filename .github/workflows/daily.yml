@@ -48,3 +48,5 @@ jobs:
         run: python -m engine.cli score ${{ inputs.date && format('--date {0}', inputs.date) || '' }}
       - name: 大盤燈號、族群強弱、事件行事曆
         run: python -m engine.cli filters ${{ inputs.date && format('--date {0}', inputs.date) || '' }}
+      - name: 買進訊號與參考價位
+        run: python -m engine.cli signals ${{ inputs.date && format('--date {0}', inputs.date) || '' }}
