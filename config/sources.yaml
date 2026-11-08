@@ -47,6 +47,8 @@ twse:
     ex_dividend: https://openapi.twse.com.tw/v1/exchangeReport/TWT48U_ALL    # 除權除息預告表
     shareholder_meetings: https://openapi.twse.com.tw/v1/opendata/t187ap41_L # 股東會日期
     holidays: https://openapi.twse.com.tw/v1/holidaySchedule/holidaySchedule # 開休市日期
+    # 盤中即時行情（基本市況報導網站，上市 tse_、上櫃 otc_ 都可查；2026-11-08 實測）
+    realtime: https://mis.twse.com.tw/stock/api/getStockInfo.jsp
 
 tpex:
   verified: true   # 2026-11-08 probe 確認

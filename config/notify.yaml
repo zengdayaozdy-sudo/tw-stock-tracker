@@ -15,3 +15,11 @@ daily_report:
 
 alerts:
   heartbeat_max_age_minutes: 15   # 盤中監控心跳超過此時間視為停止（第 8 階段）
+
+intraday:                       # 盤中停損監控（第 8 階段，常駐在擁有者的 Mac）
+  start: "09:00"
+  end: "13:30"
+  interval_minutes: 3           # 每隔幾分鐘檢查一次持股現價
+  batch_size: 50                # 每次查詢最多幾檔
+  error_backoff_seconds: [30, 60, 120, 300]   # 連線失敗時的重試間隔
+  keep_awake: true              # macOS：交易時間內阻止系統閒置睡眠（caffeinate）

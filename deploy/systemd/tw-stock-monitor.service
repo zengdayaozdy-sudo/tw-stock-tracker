@@ -1,0 +1,19 @@
+# 盤中停損監控（Linux systemd）。將 /opt/tw-stock-tracker 改成實際路徑後：
+#   sudo cp deploy/systemd/tw-stock-monitor.service /etc/systemd/system/
+#   sudo systemctl daemon-reload && sudo systemctl enable --now tw-stock-monitor
+# 金鑰放在專案根目錄的 .env。
+[Unit]
+Description=台股盤中停損監控
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/tw-stock-tracker
+ExecStart=/opt/tw-stock-tracker/.venv/bin/python -m engine.cli monitor
+Environment=TZ=Asia/Taipei PYTHONUNBUFFERED=1
+Restart=always
+RestartSec=60
+
+[Install]
+WantedBy=multi-user.target

@@ -109,6 +109,23 @@ def load_settings(plan_name: str | None = None, config_dir: Path = CONFIG_DIR) -
     )
 
 
+def load_dotenv(path: Path = ROOT / ".env") -> int:
+    """讀取專案根目錄的 .env（本機常駐程式用）；已存在的環境變數不覆寫。回傳設定的變數數。"""
+    if not path.exists():
+        return 0
+    n = 0
+    for raw in path.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key, value = key.strip().removeprefix("export ").strip(), value.strip().strip('"').strip("'")
+        if key and value and key not in os.environ:
+            os.environ[key] = value
+            n += 1
+    return n
+
+
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
     return load_settings()

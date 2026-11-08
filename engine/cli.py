@@ -450,6 +450,30 @@ def cmd_capital(args) -> None:
     print(f"總資金：{float(repo.setting('total_capital', 0)):,.0f} 元")
 
 
+def cmd_monitor(args) -> None:
+    from engine.db import connect
+    from engine.monitor.quotes import create_quotes
+    from engine.monitor.runner import Monitor, check_once
+    from engine.notify.line import LineClient
+    from engine.repository import Repository
+    from engine.sources.common import HttpClient
+    from engine.sources.exchanges import ExchangeClient
+
+    settings = load_settings()
+    http = HttpClient.from_settings(settings.sources["http"])
+    quotes = create_quotes(settings, http)
+    line = LineClient.from_env(settings.notify["line"])
+    if not line.configured:
+        print("注意：未設定 LINE 金鑰，停損提醒只會寫在記錄裡")
+    if args.once:
+        conn = connect()
+        result = check_once(settings, Repository(conn), quotes, line, datetime.now(TZ))
+        conn.close()
+        print(f"檢查 {result['checked']} 檔持股，觸及停損：{'、'.join(result['alerts']) or '無'}")
+        return
+    Monitor(settings, connect, quotes, line, ExchangeClient(settings, http).holidays).run_forever()
+
+
 def cmd_step(args) -> None:
     label = dict(PIPELINE_STEPS)[args.command]
     raise SystemExit(f"「{label}」尚未實作（{_parse_date(args.date)}）")
@@ -537,6 +561,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("amount", nargs="?", type=float)
     p.set_defaults(func=cmd_capital)
 
+    p = sub.add_parser("monitor", help="盤中停損監控常駐程式（交易時間每隔數分鐘檢查持股）")
+    p.add_argument("--once", action="store_true", help="立即檢查一次就結束（不論是否在交易時間）")
+    p.set_defaults(func=cmd_monitor)
+
     for name, label in PIPELINE_STEPS:
         p = sub.add_parser(name, help=label)
         p.add_argument("--date", help="指定日期 YYYY-MM-DD，預設今天（台灣時間）")
@@ -545,6 +573,9 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> None:
+    from engine.config import load_dotenv
+
+    load_dotenv()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     args = build_parser().parse_args(argv)
     args.func(args)

@@ -35,7 +35,7 @@ python -m engine.cli alert        # 只檢查並推播系統警告（排程任�
 - [x] 5. 訊號與風控（入選名單、進場條件、參考價位、風控張數）
 - [x] 6. LINE 每日報告與系統警告
 - [x] 7. 持股追蹤、賣出提醒、交易日誌統計
-- [ ] 8. 盤中停損監控
+- [x] 8. 盤中停損監控（常駐在擁有者的 Mac）
 - [ ] 9. 個人網站
 - [ ] 10. 回測
 - [ ] 11. 排程與維運文件
@@ -63,6 +63,22 @@ python -m engine.cli trade list                               # 交易紀錄與�
 python -m engine.cli stats                                    # 勝率、期望值、與加權指數及 0050 比較
 ```
 
+## 盤中停損監控（這台 Mac）
+
+交易日 09:00–13:30 每 3 分鐘檢查持股現價（證交所即時行情），觸及停損就推播 LINE，同一檔同一天只提醒一次。
+
+```bash
+cp .env.example .env                 # 填入 DATABASE_URL、LINE_CHANNEL_ACCESS_TOKEN、LINE_OWNER_USER_ID
+python -m engine.cli monitor --once  # 先手動檢查一次確認設定正確
+./deploy/launchd/install.sh          # 安裝為登入後自動啟動、當掉自動重啟
+./deploy/launchd/uninstall.sh        # 移除
+```
+
+- 記錄檔：`~/Library/Logs/tw-stock-tracker/monitor.log`
+- 交易時間內會用 `caffeinate` 阻止系統閒置睡眠；闔上筆電螢幕（未接電源）仍會睡眠
+- 程式停止時，收盤後批次會依心跳紀錄推播「盤中停損監控可能已停止」
+- Linux 用 `deploy/systemd/tw-stock-monitor.service`，Docker 用 `deploy/docker/Dockerfile`
+
 ## 手動操作（GitHub → Actions → 手動操作 → Run workflow）
 
 - `watch-add` 參數填股票代號（空白分隔）加入自選股；`backfill` 回補自選股 3 年歷史
@@ -73,7 +89,7 @@ python -m engine.cli stats                                    # 勝率、期望�
 ## 交給 Claude Code 接手
 
 1. 用 Claude Code 開啟本 repo
-2. 指示：「讀 CLAUDE.md、README.md、docs/open-questions.md，從第 14 節第 8 階段開始開發」
+2. 指示：「讀 CLAUDE.md、README.md、docs/open-questions.md，從第 14 節第 9 階段開始開發」
 3. 消息面判讀目前用關鍵字（排程預設 `AI_PROVIDER=rules`）；要改用 Claude，在 GitHub Variables 設 `AI_PROVIDER=claude` 並加 `ANTHROPIC_API_KEY` Secret（見 docs/open-questions.md #13）
 4. 第 6 階段（LINE）前，擁有者需在 GitHub Secrets 加上 `LINE_CHANNEL_ACCESS_TOKEN`、`LINE_OWNER_USER_ID`
 5. 第 9 階段（網站）前，在 Vercel 匯入本 repo，Root Directory 設為 `web`，並設定 `DATABASE_URL`、`SITE_PASSWORD`、`SESSION_SECRET`
