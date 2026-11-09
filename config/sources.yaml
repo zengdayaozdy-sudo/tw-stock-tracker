@@ -38,6 +38,7 @@ twse:
   verified: true   # 2026-11-08 probe 確認，2026-11-06 實際抓取全市場驗證
   endpoints:
     daily_all: https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL
+    daily_all_rwd: https://www.twse.com.tw/rwd/zh/afterTrading/STOCK_DAY_ALL?date={date}&response=json  # 網站版，當天下午更新（probe 驗證中）
     valuation_all: https://openapi.twse.com.tw/v1/exchangeReport/BWIBBU_ALL
     margin_all: https://openapi.twse.com.tw/v1/exchangeReport/MI_MARGN
     company_info: https://openapi.twse.com.tw/v1/opendata/t187ap03_L
