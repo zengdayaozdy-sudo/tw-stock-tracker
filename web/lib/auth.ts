@@ -43,3 +43,19 @@ export async function verifySession(token: string | undefined, secret: string | 
 export function authConfigured(): boolean {
   return Boolean(process.env.SITE_PASSWORD && process.env.SESSION_SECRET && process.env.SESSION_SECRET.length >= 16);
 }
+
+// ---------- MCP 存取權杖 ----------
+
+export const MCP_TOKEN_MIN_LENGTH = 32;
+
+/** MCP 端點只接受 MCP_TOKEN；未設定或長度不足時一律拒絕（端點等於關閉）。 */
+export function verifyMcpToken(token: string | undefined | null, expected: string | undefined): boolean {
+  if (!token || !expected || expected.length < MCP_TOKEN_MIN_LENGTH) return false;
+  return safeEqual(token, expected);
+}
+
+/** 從 Authorization: Bearer 標頭取出權杖。 */
+export function bearerToken(header: string | null): string | null {
+  const m = header?.match(/^Bearer\s+(\S+)\s*$/i);
+  return m ? m[1] : null;
+}

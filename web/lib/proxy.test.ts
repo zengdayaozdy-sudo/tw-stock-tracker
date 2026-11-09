@@ -36,4 +36,11 @@ describe("proxy", () => {
     expect((await proxy(req("/api/login"))).headers.get("x-middleware-next")).toBe("1");
     expect((await proxy(req("/portfolio", await createSession(SECRET)))).headers.get("x-middleware-next")).toBe("1");
   });
+
+  it("MCP 端點不檢查 cookie，交給路由驗證 MCP_TOKEN；其他路徑不受影響", async () => {
+    expect((await proxy(req("/api/mcp"))).headers.get("x-middleware-next")).toBe("1");
+    expect((await proxy(req("/api/mcp/some-token"))).headers.get("x-middleware-next")).toBe("1");
+    expect((await proxy(req("/api/mcp/a/b"))).status).toBe(401);
+    expect((await proxy(req("/api/mcpx"))).status).toBe(401);
+  });
 });

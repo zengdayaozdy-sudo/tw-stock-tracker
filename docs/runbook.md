@@ -65,6 +65,7 @@ Import 本 repo → Root Directory 設為 `web` → 環境變數：
 | `DATABASE_URL` | Neon 連線字串（建議 pooled） |
 | `SITE_PASSWORD` | 登入密碼 |
 | `SESSION_SECRET` | 至少 16 字元的隨機字串，例如 `openssl rand -hex 32` |
+| `MCP_TOKEN` | 選用，MCP 接口權杖，至少 32 字元；未設定時接口關閉（見 README「MCP 接口」） |
 
 推送到 `main` 自動部署。網站的方案、功能鎖頭、費用與風控規則由每日排程的 `sync-config` 寫入資料庫，第一次每日排程執行後才會顯示。
 
@@ -101,6 +102,7 @@ Import 本 repo → Root Directory 設為 `web` → 環境變數：
 | `OLLAMA_BASE_URL`、`OLLAMA_MODEL` | 引擎 | Ollama 設定 |
 | `ANTHROPIC_API_KEY`、`ANTHROPIC_MODEL` | 引擎 | Claude（預設 claude-opus-5-5） |
 | `SITE_PASSWORD`、`SESSION_SECRET` | 網站 | 單一密碼登入與 session 簽章 |
+| `MCP_TOKEN` | 網站 | MCP 接口權杖（至少 32 字元）；未設定或太短時接口關閉 |
 | `SITE_URL` | 引擎 | LINE 報告附網站連結 |
 | `TEST_DATABASE_URL` | 測試 | 測試用資料庫（會清空 public schema） |
 
@@ -171,6 +173,8 @@ python -m engine.cli notify --date 2026-11-06 --resend
 | 證交所／櫃買欄位解析失敗 | 官方欄位改名 | `python -m engine.cli probe` 看實際欄位，更新 `engine/sources/exchanges.py` 的候選名稱 |
 | 網站登入頁顯示「尚未設定 SITE_PASSWORD 或 SESSION_SECRET」 | Vercel 環境變數未設或 SESSION_SECRET 少於 16 字元 | 補上後 Redeploy |
 | 網站「讀取資料時發生錯誤」 | DATABASE_URL 錯誤或 Neon 暫停中 | Vercel 環境變數、Neon 主控台確認 |
+| MCP 連線回 401（標頭方式）或 404（路徑方式） | `MCP_TOKEN` 未設定、少於 32 字元、或與連線設定不符 | Vercel 環境變數確認後 Redeploy；換權杖後客戶端設定也要更新 |
+| MCP 工具回「資料庫還沒有評分資料」 | 每日排程尚未產生評分（新加入的自選股要等下一次排程回補） | 正常；等下一個交易日排程後再查 |
 | `backtest` 回「保留驗證區間已驗證過」 | 保留區間只能跑一次 | 正常保護；確實要重跑加 `--force`（結果不再是乾淨的驗證） |
 | `migrate` 失敗 | 連線字串錯誤或權限不足 | 確認 `DATABASE_URL`；migration 檔依序套用且可重複執行 |
 

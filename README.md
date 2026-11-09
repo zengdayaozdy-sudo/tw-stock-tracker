@@ -74,10 +74,47 @@ Next.js 16（App Router）＋TypeScript，部署在 Vercel，單一密碼登入�
 | `DATABASE_URL` | Neon 連線字串（建議用 pooled 連線） |
 | `SITE_PASSWORD` | 網站登入密碼 |
 | `SESSION_SECRET` | 至少 16 字元的隨機字串，例如 `openssl rand -hex 32` 的輸出 |
+| `MCP_TOKEN` | 選用。MCP 接口的存取權杖，至少 32 字元，例如 `openssl rand -hex 32` 的輸出；未設定時 MCP 接口關閉 |
 
 推送到 `main` 即自動部署。方案、費用與風控規則由每日排程的 `sync-config` 寫入資料庫，網站與引擎使用同一份設定。
 
 本機開發：`cd web && npm install && npm run dev`（`web/.env.local` 放上述三個變數）。
+
+## MCP 接口（讓 Claude 直接讀取與操作）
+
+網站提供 MCP（Model Context Protocol）接口，Claude 可以直接查詢評分、訊號、持股，並維護自選股、族群與交易日誌。支援 MCP 2026-07-28（無狀態）與 2025 年版協定。**不提供任何下單功能。**
+
+| 連線方式 | 網址 | 驗證 | 適用 |
+|---|---|---|---|
+| 標頭 | `https://<網站>/api/mcp` | `Authorization: Bearer <MCP_TOKEN>` | Claude Code、Claude Desktop |
+| 路徑 | `https://<網站>/api/mcp/<MCP_TOKEN>` | 網址本身 | claude.ai 自訂連接器（無法自訂標頭） |
+
+設定：Vercel 環境變數加上 `MCP_TOKEN`（`openssl rand -hex 32`）→ Redeploy。
+
+```bash
+# Claude Code
+claude mcp add --transport http tw-stock https://<網站>/api/mcp --header "Authorization: Bearer <MCP_TOKEN>"
+```
+
+claude.ai：設定 → 連接器 → 新增自訂連接器 → 網址填 `https://<網站>/api/mcp/<MCP_TOKEN>`，驗證留空。路徑方式的網址等同密碼，不要分享；外流時換一組 `MCP_TOKEN` 並 Redeploy，舊網址立即失效。
+
+| 工具 | 用途 |
+|---|---|
+| `get_overview` | 當日大盤燈號、族群強弱、買進訊號、賣出提醒、持股、系統狀態 |
+| `search_stocks` | 以代號或名稱搜尋股票 |
+| `get_stock` | 個股評分拆解、訊號與參考價位、排雷紀錄、事件、近期股價 |
+| `get_price_history` | 日 K 歷史 |
+| `list_signals` | 指定日的買進訊號與賣出提醒 |
+| `get_watchlist` | 自選股與最新分數 |
+| `list_groups`、`get_group` | 族群強弱排名、成分股排行 |
+| `get_portfolio` | 持股損益、勝率與期望值、最近交易 |
+| `get_system_status` | 方案、排程紀錄、FinMind 用量、盤中監控心跳 |
+| `add_to_watchlist`、`remove_from_watchlist` | 維護自選股 |
+| `create_custom_group`、`add_group_members`、`remove_group_member` | 維護自訂族群 |
+| `record_trade` | 登錄已在券商成交的買賣（只記帳，不下單） |
+| `update_holding_levels` | 修改持股停損停利價 |
+
+寫入工具與網站表單共用 `web/lib/mutations.ts`，結果完全一致。
 
 ## 交易日誌（也可用指令登錄）
 

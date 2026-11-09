@@ -281,3 +281,24 @@ export async function lastHeartbeat(job: string) {
   const rows = await db()`SELECT max(started_at) AS t FROM job_logs WHERE job = ${job} AND status = 'heartbeat'`;
   return rows[0]?.t as Date | null;
 }
+
+// ---------- MCP 用查詢 ----------
+
+/** 以代號前綴或名稱關鍵字搜尋股票清單。 */
+export async function searchStocks(q: string, limit = 20) {
+  const text = q.trim();
+  const like = `%${text.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+  return await db()`
+    SELECT s.stock_id, s.name, s.market, s.industry, s.status,
+      EXISTS (SELECT 1 FROM watchlist w WHERE w.stock_id = s.stock_id) AS in_watchlist
+    FROM stocks s
+    WHERE s.stock_id = ${text.toUpperCase()} OR s.stock_id LIKE ${`${text.toUpperCase()}%`} OR s.name LIKE ${like}
+    ORDER BY (s.stock_id = ${text.toUpperCase()}) DESC, (s.name = ${text}) DESC, s.stock_id
+    LIMIT ${limit}`;
+}
+
+export async function tradesRecent(limit = 30) {
+  return await db()`
+    SELECT trade_id, stock_id, date, side, price, shares, fee, tax, note
+    FROM trades ORDER BY date DESC, trade_id DESC LIMIT ${limit}`;
+}
