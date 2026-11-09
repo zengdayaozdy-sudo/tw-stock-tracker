@@ -10,13 +10,20 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
   const message = error ? ERRORS[error] : !authConfigured() ? ERRORS.config : null;
   return (
     <main className="login">
-      <h1>台股追蹤</h1>
-      {message && <p className="notice error">{message}</p>}
-      <form method="post" action="/api/login">
-        <input type="password" name="password" placeholder="密碼" autoFocus required autoComplete="current-password" />
-        <input type="hidden" name="next" value={next ?? "/"} />
-        <button type="submit">登入</button>
-      </form>
+      <div className="login-card">
+        <div className="login-brand">
+          <span className="brand-mark" aria-hidden="true" />
+          台股追蹤
+        </div>
+        <h1>登入</h1>
+        <p className="sub">自選股評分、訊號與持股追蹤</p>
+        {message && <p className="notice error">{message}</p>}
+        <form method="post" action="/api/login">
+          <input type="password" name="password" placeholder="密碼" autoFocus required autoComplete="current-password" />
+          <input type="hidden" name="next" value={next ?? "/"} />
+          <button type="submit">登入</button>
+        </form>
+      </div>
     </main>
   );
 }

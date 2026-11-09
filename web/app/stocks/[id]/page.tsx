@@ -77,6 +77,11 @@ export default async function StockPage({ params }: { params: Promise<{ id: stri
                 {HORIZON_LABELS[sc.horizon]}分數 {sc.date}
               </div>
               <div className="stat-value">{sc.status === "insufficient_data" ? "資料不足" : num(sc.total, 1)}</div>
+              {sc.status !== "insufficient_data" && sc.total !== null && (
+                <span className="stat-bar" aria-hidden="true">
+                  <span className={sc.total >= 60 ? "hi" : ""} style={{ width: `${Math.max(0, Math.min(100, sc.total))}%` }} />
+                </span>
+              )}
             </div>
           ))}
         </div>

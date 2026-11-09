@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { CountUp } from "@/components/CountUp";
+import { DivBar } from "@/components/DivBar";
 import { BuySignalTable, Change, Panel, StockLink } from "@/components/ui";
 import { LIGHT_LABELS, dateLabel, money, num, timeTaipei, tone } from "@/lib/format";
 import { holdingsDetail, lastHeartbeat, latestDate, latestJob, market, signalsOn } from "@/lib/queries";
@@ -35,42 +37,74 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
 
   return (
     <>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: 12, flexWrap: "wrap" }}>
+      <header className="page-head">
         <div>
           <h1>{dateLabel(date)}</h1>
           <p className="sub">收盤後評分與訊號</p>
         </div>
-        <form action={goToStock} className="inline" style={{ marginBottom: 16 }}>
-          <input name="q" placeholder="股票代號" className="w-md" aria-label="查詢股票" />
+        <form action={goToStock} className="quick-search">
+          <svg viewBox="0 0 20 20" className="search-icon" aria-hidden="true">
+            <path d="M8.5 3a5.5 5.5 0 0 1 4.38 8.83l3.65 3.64-1.06 1.06-3.64-3.65A5.5 5.5 0 1 1 8.5 3Zm0 1.5a4 4 0 1 0 0 8 4 4 0 0 0 0-8Z" />
+          </svg>
+          <input name="q" placeholder="代號或名稱" aria-label="查詢股票" />
         </form>
-      </div>
+      </header>
+
+      <section className="kpis" aria-label="今日摘要">
+        <div className={`kpi kpi-light light-${m?.light ?? "none"}`}>
+          <div className="kpi-label">大盤燈號</div>
+          <div className="kpi-value light">
+            <span className="light-dot" />
+            {m ? LIGHT_LABELS[m.light] : "—"}
+          </div>
+          <div className="kpi-sub">{m ? `合計 ${m.total! > 0 ? "+" : ""}${m.total}` : "尚未計算"}</div>
+        </div>
+        <div className="kpi">
+          <div className="kpi-label">今日買進訊號</div>
+          <div className="kpi-value num">
+            <CountUp value={buys.length} />
+            <small> 筆</small>
+          </div>
+          <div className="kpi-sub">
+            {signalJob?.status === "skipped" ? `暫停：${signalJob.detail?.reason ?? ""}` : `${blocked.length} 檔觸發但被濾網擋下`}
+          </div>
+        </div>
+        <div className="kpi">
+          <div className="kpi-label">持股市值</div>
+          <div className="kpi-value num">
+            <CountUp value={holdings.length ? value : null} kind="money" />
+          </div>
+          <div className="kpi-sub">{holdings.length} 檔持股</div>
+        </div>
+        <div className={`kpi tone-${tone(value - cost) || "flat"}`}>
+          <div className="kpi-label">未實現損益</div>
+          <div className={`kpi-value num ${tone(value - cost)}`}>
+            <CountUp value={holdings.length ? value - cost : null} kind="money" sign />
+          </div>
+          <div className="kpi-sub">
+            {holdings.length ? <Change value={cost ? value / cost - 1 : null} digits={2} /> : "沒有持股"}
+          </div>
+        </div>
+      </section>
 
       <div className="grid wide-left">
-        <Panel title="大盤燈號" meta={m ? `合計 ${m.total! > 0 ? "+" : ""}${m.total}` : undefined}>
+        <Panel title="大盤燈號依據" meta={m ? LIGHT_LABELS[m.light] : undefined}>
           {m ? (
-            <div className="panel-body">
-              <div className={`light light-${m.light}`}>
-                <span className="light-dot" />
-                <span className="light-word">{LIGHT_LABELS[m.light]}</span>
-                {m.light === "bearish" && <span className="small muted">不發新買進訊號、停損收緊、建議降低部位</span>}
-              </div>
-              <table style={{ marginTop: 10 }}>
-                <tbody>
-                  {m.inputs.map((i) => (
-                    <tr key={i.key}>
-                      <td className={i.vote > 0 ? "up" : i.vote < 0 ? "down" : "faint"}>
-                        <span className="vote">{i.vote > 0 ? `+${i.vote}` : i.vote}</span>
-                      </td>
-                      <td>{i.label}</td>
-                      <td className="text muted">{i.reason}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <ul className="votes">
+              {m.inputs.map((i) => (
+                <li key={i.key}>
+                  <span className={`vote-chip ${i.vote > 0 ? "up" : i.vote < 0 ? "down" : ""}`}>
+                    {i.vote > 0 ? `+${i.vote}` : i.vote}
+                  </span>
+                  <span className="vote-label">{i.label}</span>
+                  <span className="vote-reason">{i.reason}</span>
+                </li>
+              ))}
+            </ul>
           ) : (
             <p className="empty">今日大盤燈號尚未計算</p>
           )}
+          {m?.light === "bearish" && <p className="panel-note">偏空：不發新買進訊號、停損收緊、建議降低部位</p>}
         </Panel>
 
         <Panel title="系統狀態" meta={<Link href="/status">詳細</Link>}>
@@ -107,7 +141,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
         </Panel>
       </div>
 
-      <div style={{ height: 14 }} />
+      <div className="gap" />
       <Panel title="今日買進訊號" meta={`${buys.length} 筆`}>
         {buys.length === 0 && m?.light === "bearish" ? (
           <p className="empty">大盤燈號偏空，今日不發新買進訊號</p>
@@ -126,7 +160,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
         )}
       </Panel>
 
-      <div style={{ height: 14 }} />
+      <div className="gap" />
       <div className="grid two">
         <Panel title="族群強弱" meta={<>相對大盤報酬｜<Link href="/groups">全部族群</Link></>}>
           {ranked.length ? (
@@ -137,7 +171,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
                     <th className="n">#</th>
                     <th>族群</th>
                     <th className="n">平均分</th>
-                    <th className="n">1 個月</th>
+                    <th>1 個月相對大盤</th>
                     <th className="n">3 個月</th>
                   </tr>
                 </thead>
@@ -150,8 +184,13 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
                         {g.weak && <span className="tag block">弱勢</span>}
                       </td>
                       <td className="n">{num(g.avg_score, 0)}</td>
-                      <td className="n">
-                        <Change value={g.rel_return_20 ?? g.return_20} />
+                      <td>
+                        <span className="rel">
+                          <DivBar value={g.rel_return_20 ?? g.return_20} />
+                          <span className="num small">
+                            <Change value={g.rel_return_20 ?? g.return_20} />
+                          </span>
+                        </span>
                       </td>
                       <td className="n">
                         <Change value={g.rel_return_60 ?? g.return_60} />
