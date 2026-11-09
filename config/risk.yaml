@@ -36,6 +36,7 @@ exit:
   max_holding_days_no_gain: 20 # 持有超過此交易日數未上漲則提醒換股
   no_gain_threshold: 0.0       # 「未上漲」：收盤相對成本漲幅 ≤ 此值
   min_score: 50                # 短線與中長線分數都低於此值 → 分數跌出門檻
+  score_drop_min_days: 0       # 持有未滿此交易日數不以分數出場（0＝不限制；回測比較 0／5／10）
   trailing_activation: 0.05    # 最高收盤曾高於成本 5% 以上才啟動移動停利
   signal_lookback_days: 5      # 登錄交易時，採用幾天內的訊號作為快照與停損停利
 
@@ -44,6 +45,7 @@ entry_conditions:
   - ma_golden_cross            # 均線黃金交叉
   - volume_breakout_20d        # 帶量突破 20 日高點
   - institutional_buy_streak   # 法人連續買超
+trigger_window_days: 1            # 站上季線／黃金交叉：N 日內穿越且今天仍在上方即算（1＝只算當天；回測比較 1／3／5）
 institutional_buy_streak_days: 3  # 外資＋投信合計連續買超天數
 volume_breakout_ratio: 1.5         # 成交量 ≥ 20 日均量 1.5 倍
 golden_cross_ma: [5, 20]           # 黃金交叉：5 日線由下往上穿越 20 日線

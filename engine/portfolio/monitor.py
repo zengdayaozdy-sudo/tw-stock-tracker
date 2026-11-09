@@ -75,11 +75,12 @@ def check_holding(h: dict, closes: list[tuple[date, float]], scores: dict[str, d
     if h.get("take_profit") and close >= h["take_profit"]:
         hits["take_profit"] = f"收盤 {close:g} 達停利目標 {h['take_profit']:g}，可分批獲利或改用移動停利"
 
+    held_days = len(hist) - 1  # 開倉後經過的交易日數
     totals = [s["total"] for s in scores.values() if s.get("total") is not None and s.get("date") == as_of.isoformat()]
-    if totals and max(totals) < ex["min_score"]:
+    # 剛進場的幾天分數本來就在門檻附近，太早用分數出場會頻繁進出；停損與移動停利不受影響
+    if totals and max(totals) < ex["min_score"] and held_days >= ex.get("score_drop_min_days", 0):
         hits["score_drop"] = f"短線／中長線分數最高 {max(totals):.0f}，低於 {ex['min_score']}"
 
-    held_days = len(hist) - 1  # 開倉後經過的交易日數
     gain = close / h["avg_cost"] - 1
     if held_days >= ex["max_holding_days_no_gain"] and gain <= ex["no_gain_threshold"]:
         hits["stale"] = f"持有 {held_days} 個交易日，報酬 {gain:+.1%}，考慮換股"

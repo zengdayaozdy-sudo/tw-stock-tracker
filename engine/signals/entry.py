@@ -2,6 +2,8 @@
 
 - above_ma60：收盤由下往上站上季線（前一日在季線下、今日在季線上）
 - ma_golden_cross：短均線由下往上穿越長均線（預設 5／20 日）
+  以上兩項可用 trigger_window_days 放寬為「N 日內穿越且今天仍在上方」，
+  避免穿越當天剛好不在名單內（分數、燈號、族群）就永遠錯過。
 - volume_breakout_20d：收盤突破前 20 日最高價，且成交量 ≥ 20 日均量 × 倍數
 - institutional_buy_streak：外資＋投信合計連續 N 日買超
 只使用 as_of 當天（含）以前的資料。
@@ -26,22 +28,45 @@ def _upto(df: pd.DataFrame, as_of: date) -> pd.DataFrame:
     return df[df.index <= pd.Timestamp(as_of)].sort_index()
 
 
-def above_ma60(close: pd.Series) -> dict | None:
+def _crossed_within(a: pd.Series, b: pd.Series, window: int) -> int | None:
+    """a 在最近 window 個交易日內由下往上穿越 b，且今天仍在 b 之上；回傳幾天前穿越（0＝今天）。"""
+    if len(a) < 2 or pd.isna(b.iloc[-1]) or not a.iloc[-1] > b.iloc[-1]:
+        return None
+    for ago in range(max(window, 1)):
+        i = len(a) - 1 - ago
+        if i < 1 or pd.isna(b.iloc[i - 1]):
+            return None
+        if a.iloc[i - 1] <= b.iloc[i - 1] and a.iloc[i] > b.iloc[i]:
+            return ago
+        if not a.iloc[i] > b.iloc[i]:
+            return None
+    return None
+
+
+def above_ma60(close: pd.Series, window: int = 1) -> dict | None:
     ma = close.rolling(60).mean()
-    if len(close) < 61 or pd.isna(ma.iloc[-2]):
+    if len(close) < 61:
         return None
-    if close.iloc[-2] <= ma.iloc[-2] and close.iloc[-1] > ma.iloc[-1]:
-        return {"ma60": round(float(ma.iloc[-1]), 2)}
-    return None
+    ago = _crossed_within(close, ma, window)
+    if ago is None:
+        return None
+    out = {"ma60": round(float(ma.iloc[-1]), 2)}
+    if ago:
+        out["days_ago"] = ago
+    return out
 
 
-def golden_cross(close: pd.Series, fast: int, slow: int) -> dict | None:
+def golden_cross(close: pd.Series, fast: int, slow: int, window: int = 1) -> dict | None:
     f, s = close.rolling(fast).mean(), close.rolling(slow).mean()
-    if len(close) < slow + 1 or pd.isna(s.iloc[-2]):
+    if len(close) < slow + 1:
         return None
-    if f.iloc[-2] <= s.iloc[-2] and f.iloc[-1] > s.iloc[-1]:
-        return {f"ma{fast}": round(float(f.iloc[-1]), 2), f"ma{slow}": round(float(s.iloc[-1]), 2)}
-    return None
+    ago = _crossed_within(f, s, window)
+    if ago is None:
+        return None
+    out = {f"ma{fast}": round(float(f.iloc[-1]), 2), f"ma{slow}": round(float(s.iloc[-1]), 2)}
+    if ago:
+        out["days_ago"] = ago
+    return out
 
 
 def volume_breakout(p: pd.DataFrame, days: int, ratio: float) -> dict | None:
@@ -76,9 +101,10 @@ def entry_triggers(prices: pd.DataFrame, chips: pd.DataFrame, as_of: date, cfg: 
         return {}
     close = p["close"].astype(float)
     fast, slow = cfg.get("golden_cross_ma", [5, 20])
+    window = int(cfg.get("trigger_window_days", 1))
     checks = {
-        "above_ma60": lambda: above_ma60(close),
-        "ma_golden_cross": lambda: golden_cross(close, fast, slow),
+        "above_ma60": lambda: above_ma60(close, window),
+        "ma_golden_cross": lambda: golden_cross(close, fast, slow, window),
         "volume_breakout_20d": lambda: volume_breakout(p, cfg.get("breakout_days", 20), cfg["volume_breakout_ratio"]),
         "institutional_buy_streak": lambda: institutional_streak(chips, as_of, cfg["institutional_buy_streak_days"]),
     }
@@ -94,6 +120,8 @@ def trigger_text(triggers: dict[str, dict]) -> list[str]:
     out = []
     for k, d in triggers.items():
         label = TRIGGER_LABELS.get(k, k)
+        if d.get("days_ago"):
+            label += f"（{d['days_ago']} 日前）"
         if k == "institutional_buy_streak":
             label = f"法人連 {d['days']} 日買超"
         elif k == "volume_breakout_20d":
