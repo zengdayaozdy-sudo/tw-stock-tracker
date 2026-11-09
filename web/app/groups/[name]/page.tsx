@@ -7,9 +7,8 @@ import { requireSession } from "@/lib/session";
 export default async function GroupPage({ params }: { params: Promise<{ name: string }> }) {
   await requireSession();
   const name = decodeURIComponent((await params).name);
-  const group = await groupByName(name);
+  const [group, date] = await Promise.all([groupByName(name), latestDate()]);
   if (!group) notFound();
-  const date = await latestDate();
   const members = await groupMembers(group.group_id);
   const ids = members.map((m) => m.stock_id as string);
   const [m, scores, flags, closes] = await Promise.all([

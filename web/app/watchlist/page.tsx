@@ -42,6 +42,8 @@ export default async function WatchlistPage({ searchParams }: { searchParams: Pr
   const memberNames = await names([...new Set(custom.flatMap((g) => g.members as string[]))]);
   const watched = new Set(list.map((w) => w.stock_id));
   const limit = config.watchlist_limit;
+  // 免費模式的同族群比較只算自選股裡的成分股，不足門檻時改用產業、再不足只與自身歷史比較
+  const minPeers = config.min_peers ?? 3;
 
   const sort: SortKey = sp.sort && sp.sort in SORTS ? (sp.sort as SortKey) : "code";
   const group = sp.g && custom.some((g) => g.name === sp.g) ? sp.g : undefined;
@@ -192,6 +194,7 @@ export default async function WatchlistPage({ searchParams }: { searchParams: Pr
         <div className="group-grid">
           {custom.map((g) => {
             const members = g.members as string[];
+            const inList = members.filter((sid) => watched.has(sid)).length;
             return (
               <section key={g.group_id} className="card group-card">
                 <div className="card-head">
@@ -199,6 +202,11 @@ export default async function WatchlistPage({ searchParams }: { searchParams: Pr
                     <Link href={`/groups/${encodeURIComponent(g.name)}`}>{g.name}</Link>
                   </h3>
                   <span className="meta">{members.length} 檔</span>
+                  {limit && inList < minPeers ? (
+                    <span className="tag warn" title="少於門檻時改用產業族群比較，仍不足則只與自身歷史比較">
+                      自選股中 {inList} 檔，需 {minPeers} 檔才做同族群比較
+                    </span>
+                  ) : null}
                   <details className="menu">
                     <summary aria-label={`${g.name} 族群設定`}>⋯</summary>
                     <div className="menu-pop wide">

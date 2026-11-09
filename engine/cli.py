@@ -588,6 +588,7 @@ def runtime_config(settings) -> dict:
         "risk": {k: settings.risk[k] for k in ("costs", "stop_loss", "take_profit", "exit", "position")},
         "finmind_hourly_budget": int(fm["hourly_limit"][settings.plan.name] * fm.get("safety_margin", 0.9)),
         "min_history_days": settings.scoring["min_history_days"],
+        "min_peers": settings.scoring["min_peers"],
         "updated_at": datetime.now(TZ).isoformat(),
     }
 

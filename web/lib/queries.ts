@@ -18,6 +18,7 @@ export type RuntimeConfig = {
   };
   finmind_hourly_budget: number;
   min_history_days: number;
+  min_peers?: number;
   updated_at: string;
 };
 
@@ -37,6 +38,7 @@ export const DEFAULT_CONFIG: RuntimeConfig = {
   },
   finmind_hourly_budget: 540,
   min_history_days: 240,
+  min_peers: 3,
   updated_at: "",
 };
 

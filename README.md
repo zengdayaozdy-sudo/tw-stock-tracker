@@ -45,13 +45,13 @@ python -m engine.cli alert        # 只檢查並推播系統警告（排程任�
 | 項目 | 狀態 |
 |---|---|
 | GitHub 私人 repo、CI | 完成 |
-| Neon 資料庫（專案 tw-stock-tracker，round-violet-78597036） | 完成，migration 001、002 已套用 |
+| Neon 資料庫（專案 tw-stock-tracker，round-violet-78597036，新加坡 aws-ap-southeast-1） | 完成；migration 由每日／每週排程的 `migrate` 步驟自動套用 |
 | GitHub Secrets：DATABASE_URL、FINMIND_TOKEN | 完成 |
 | 證交所／櫃買資料欄位 probe | 完成，2026-11-06 全市場實際抓取通過（約 1,980 檔，26 秒） |
 | 股票清單、產業族群、自訂族群 | 完成：1,990 家公司、35 個產業族群＋5 個自訂族群 |
 | LINE Messaging API（LINE_CHANNEL_ACCESS_TOKEN、LINE_OWNER_USER_ID） | 待擁有者設定（未設定時報告只輸出到排程記錄，不會推播）；設定方式：`gh secret set LINE_CHANNEL_ACCESS_TOKEN`、`gh secret set LINE_OWNER_USER_ID` |
-| Vercel 專案（root 設為 web/，環境變數 DATABASE_URL、SITE_PASSWORD、SESSION_SECRET） | 程式已完成，待擁有者在 Vercel 匯入（見「個人網站」） |
-| 自選股 | 擁有者在程式完成後自行加入 |
+| Vercel 專案（root 設為 web/，環境變數 DATABASE_URL、SITE_PASSWORD、SESSION_SECRET） | 完成：https://tw-stock-tracker-beta.vercel.app ，函式在新加坡 sin1 執行（web/vercel.json），與資料庫同區 |
+| 自選股 | 擁有者自行加入；免費模式建議 30～50 檔、分 6～10 個族群且每族群至少 3 檔（同族群比較需 3 檔以上），每日排程自動回補 10 檔歷史 |
 
 ## 個人網站（web/）
 

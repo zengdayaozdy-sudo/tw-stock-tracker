@@ -14,9 +14,9 @@ const MARKET_LABELS: Record<string, string> = { twse: "上市", tpex: "上櫃" }
 export default async function StockPage({ params }: { params: Promise<{ id: string }> }) {
   await requireSession();
   const { id } = await params;
-  const s = await stock(id.toUpperCase());
+  // 基本資料與最新日期互不相依，一起查以減少資料庫往返
+  const [s, date] = await Promise.all([stock(id.toUpperCase()), latestDate()]);
   if (!s) notFound();
-  const date = await latestDate();
   const [prices, signals, scores, news, groups, flags, events] = await Promise.all([
     priceHistory(s.stock_id),
     stockSignals(s.stock_id),
