@@ -248,6 +248,36 @@ def cmd_companies(_args) -> None:
     print(f"已更新 {n} 家公司資料")
 
 
+def cmd_probe_mops(args) -> None:
+    """測試公開資訊觀測站重大訊息端點（新版 API 與舊版網頁），列出狀態與回應開頭。"""
+    import httpx
+
+    d = _parse_date(args.date)
+    roc = d.year - 1911
+    ua = {"User-Agent": "Mozilla/5.0 (tw-stock-tracker)", "Referer": "https://mops.twse.com.tw/mops/"}
+    tries = [
+        ("POST json", "https://mops.twse.com.tw/mops/api/t05sr01_1", {"json": {}}),
+        ("POST json", "https://mops.twse.com.tw/mops/api/t05st02",
+         {"json": {"year": str(roc), "month": f"{d.month:02d}", "day": f"{d.day:02d}"}}),
+        ("POST json", "https://mops.twse.com.tw/mops/api/t05st02",
+         {"json": {"year": str(roc), "month": str(d.month), "day": str(d.day)}}),
+        ("POST form", "https://mopsov.twse.com.tw/mops/web/ajax_t05st02",
+         {"data": {"encodeURIComponent": "1", "step": "1", "step00": "0", "firstin": "1", "off": "1",
+                   "TYPEK": "all", "year": str(roc), "month": f"{d.month:02d}", "day": f"{d.day:02d}"}}),
+        ("GET", "https://mopsov.twse.com.tw/mops/web/t05sr01_1", {}),
+    ]
+    with httpx.Client(timeout=30, headers=ua, follow_redirects=True) as c:
+        for method, url, kw in tries:
+            try:
+                r = c.post(url, **kw) if method.startswith("POST") else c.get(url)
+                body = r.text
+                print(f"\n[{method}] {url} {kw.get('json') or kw.get('data') or ''}")
+                print(f"  status={r.status_code} type={r.headers.get('content-type')} len={len(body)}")
+                print("  head:", " ".join(body[:1500].split()))
+            except Exception as e:
+                print(f"\n[{method}] {url} 失敗：{e}")
+
+
 def cmd_probe(args) -> None:
     """實際呼叫各公開資料端點，列出欄位與第一筆內容，用來確認官方欄位名稱。"""
     from engine.sources.common import HttpClient
@@ -696,6 +726,10 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("probe", help="確認證交所／櫃買資料欄位")
     p.add_argument("--date")
     p.set_defaults(func=cmd_probe)
+
+    p = sub.add_parser("probe-mops", help="測試公開資訊觀測站重大訊息端點")
+    p.add_argument("--date")
+    p.set_defaults(func=cmd_probe_mops)
 
     p = sub.add_parser("score", help="三面向評分")
     p.add_argument("--date")

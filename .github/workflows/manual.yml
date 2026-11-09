@@ -8,6 +8,7 @@ on:
         type: choice
         options:
           - probe
+          - probe-mops
           - companies
           - seed-groups
           - watch-add
