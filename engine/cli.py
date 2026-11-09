@@ -293,6 +293,49 @@ def cmd_probe_mops(args) -> None:
             print(f"[detail] 失敗：{e}")
 
 
+def cmd_probe_url(args) -> None:
+    """實測任意公開資料網址：列出狀態、筆數、欄位與第一筆；--grep 只列出含關鍵字的 swagger 路徑。"""
+    import json as _json
+
+    import httpx
+
+    with httpx.Client(timeout=40, headers={"User-Agent": "Mozilla/5.0 (tw-stock-tracker)"}, follow_redirects=True) as c:
+        for url in args.urls:
+            try:
+                r = c.post(url, json=_json.loads(args.json)) if args.json else c.get(url)
+            except Exception as e:
+                print(f"\n[{url}] 失敗：{e}")
+                continue
+            print(f"\n[{url}] status={r.status_code} type={r.headers.get('content-type')} len={len(r.text)}")
+            try:
+                data = r.json()
+            except ValueError:
+                print("  head:", " ".join(r.text[:800].split()))
+                continue
+            if args.grep and isinstance(data, dict) and "paths" in data:
+                words = args.grep.split(",")
+                for path, ops in data["paths"].items():
+                    text = _json.dumps(ops, ensure_ascii=False)
+                    if any(w in text or w in path for w in words):
+                        summary = next(iter(ops.values())).get("summary", "")
+                        print(f"  {path}  {summary}")
+                continue
+            rows = data if isinstance(data, list) else data.get("data") or data.get("tables") or data
+            if isinstance(rows, list):
+                print(f"  筆數={len(rows)}")
+                if rows:
+                    print("  first:", _json.dumps(rows[0], ensure_ascii=False)[:900])
+            if isinstance(data, dict):
+                print("  keys:", list(data.keys())[:20])
+                for k in ("fields", "stat", "title", "date"):
+                    if k in data:
+                        print(f"  {k}:", _json.dumps(data[k], ensure_ascii=False)[:900])
+                if isinstance(data.get("tables"), list):
+                    for t in data["tables"][:3]:
+                        print("  table:", t.get("title"), _json.dumps(t.get("fields"), ensure_ascii=False)[:600])
+                        print("    first:", _json.dumps((t.get("data") or [None])[0], ensure_ascii=False)[:600])
+
+
 def cmd_probe(args) -> None:
     """實際呼叫各公開資料端點，列出欄位與第一筆內容，用來確認官方欄位名稱。"""
     from engine.sources.common import HttpClient
@@ -741,6 +784,12 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("probe", help="確認證交所／櫃買資料欄位")
     p.add_argument("--date")
     p.set_defaults(func=cmd_probe)
+
+    p = sub.add_parser("probe-url", help="實測任意公開資料網址")
+    p.add_argument("urls", nargs="+")
+    p.add_argument("--json", help="改用 POST 並送出這段 JSON")
+    p.add_argument("--grep", help="swagger 路徑關鍵字，逗號分隔")
+    p.set_defaults(func=cmd_probe_url)
 
     p = sub.add_parser("probe-mops", help="測試公開資訊觀測站重大訊息端點")
     p.add_argument("--date")

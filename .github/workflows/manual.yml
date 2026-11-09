@@ -9,6 +9,7 @@ on:
         options:
           - probe
           - probe-mops
+          - probe-url
           - news
           - companies
           - seed-groups
@@ -52,6 +53,7 @@ jobs:
           case "$CMD" in
             probe|companies|seed-groups|plan) python -m engine.cli "$CMD" ;;
             probe-mops)       python -m engine.cli probe-mops $ARGS ;;
+            probe-url)        eval python -m engine.cli probe-url $ARGS ;;
             news)             python -m engine.cli news $ARGS ;;
             watch-add)    python -m engine.cli watch add $ARGS ;;
             watch-remove) python -m engine.cli watch remove $ARGS ;;
