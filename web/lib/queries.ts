@@ -219,6 +219,50 @@ export async function watchlist() {
     FROM watchlist w JOIN stocks s USING (stock_id) ORDER BY w.stock_id`;
 }
 
+export type WatchItem = {
+  stock_id: string;
+  name: string;
+  industry: string | null;
+  market: string;
+  status: string[];
+  price_date: string | null;
+  close: number | null;
+  prev_close: number | null;
+  short: number | null;
+  long: number | null;
+  score_status: string | null;
+  price_days: number;
+  groups: string[];
+};
+
+/** 自選股清單＋最新收盤、前一日收盤、最新短線／中長線分數與所屬自訂族群。 */
+export async function watchlistDetail(): Promise<WatchItem[]> {
+  return (await db()`
+    WITH w AS (SELECT stock_id FROM watchlist),
+    last AS (
+      SELECT DISTINCT ON (p.stock_id) p.stock_id, p.date, p.close FROM daily_prices p JOIN w USING (stock_id)
+      WHERE p.close IS NOT NULL ORDER BY p.stock_id, p.date DESC),
+    prev AS (
+      SELECT DISTINCT ON (p.stock_id) p.stock_id, p.close FROM daily_prices p JOIN last l USING (stock_id)
+      WHERE p.date < l.date AND p.close IS NOT NULL ORDER BY p.stock_id, p.date DESC),
+    sc AS (
+      SELECT stock_id,
+        max(total) FILTER (WHERE horizon = 'short') AS short,
+        max(total) FILTER (WHERE horizon = 'long') AS long,
+        min(status) AS score_status
+      FROM scores WHERE date = (SELECT max(date) FROM scores) AND stock_id IN (SELECT stock_id FROM w)
+      GROUP BY stock_id)
+    SELECT w.stock_id, s.name, s.industry, s.market, s.status,
+      last.date AS price_date, last.close, prev.close AS prev_close,
+      sc.short, sc.long, sc.score_status,
+      (SELECT count(*) FROM daily_prices p WHERE p.stock_id = w.stock_id)::int AS price_days,
+      coalesce((SELECT array_agg(g.name ORDER BY g.name) FROM group_members m JOIN groups g USING (group_id)
+                WHERE m.stock_id = w.stock_id AND g.kind = 'custom'), '{}') AS groups
+    FROM w JOIN stocks s USING (stock_id)
+    LEFT JOIN last USING (stock_id) LEFT JOIN prev USING (stock_id) LEFT JOIN sc USING (stock_id)
+    ORDER BY w.stock_id`) as unknown as WatchItem[];
+}
+
 export async function groupsWithMembers() {
   return await db()`
     SELECT g.group_id, g.name, g.kind,

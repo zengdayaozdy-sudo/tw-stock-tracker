@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { MenuCloser } from "@/components/MenuCloser";
 import { Nav } from "@/components/Nav";
 import "./globals.css";
 
@@ -15,6 +16,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body>
         <Nav />
         <div className="shell">{children}</div>
+        <MenuCloser />
       </body>
     </html>
   );
