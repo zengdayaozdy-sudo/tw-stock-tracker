@@ -45,7 +45,7 @@ entry_conditions:
   - ma_golden_cross            # 均線黃金交叉
   - volume_breakout_20d        # 帶量突破 20 日高點
   - institutional_buy_streak   # 法人連續買超
-trigger_window_days: 1            # 站上季線／黃金交叉：N 日內穿越且今天仍在上方即算（1＝只算當天；回測比較 1／3／5）
+trigger_window_days: 3            # 站上季線／黃金交叉：3 日內穿越且今天仍在上方即算（2026-11-10 回測調參區間年化 +42.3% → +49.6%）
 institutional_buy_streak_days: 3  # 外資＋投信合計連續買超天數
 volume_breakout_ratio: 1.5         # 成交量 ≥ 20 日均量 1.5 倍
 golden_cross_ma: [5, 20]           # 黃金交叉：5 日線由下往上穿越 20 日線
