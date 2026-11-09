@@ -75,6 +75,7 @@ class PlanStrategy(bt.Strategy):
         self.exposure: list[tuple[date, float]] = []  # 每日持股市值佔總資產比例
         self.trades: list[dict[str, Any]] = []
         self.skipped: dict[str, int] = {"資金不足": 0, "張數為 0": 0, "限價未成交": 0}
+        self.anomalies: list[str] = []                  # 不應發生的狀況（例如部位變成負數），回測報告列出
 
     # ---------- 每日 ----------
     def next(self):
@@ -118,17 +119,16 @@ class PlanStrategy(bt.Strategy):
             info["highest"] = res["highest"]
             # 回測中「達停利目標」也直接出場（實盤可改用移動停利續抱）；收盤跌破停損但停損單未成交時同樣出場
             exits = list(res["triggered"])
+            # 停損單一律在每日 next() 重掛：前一天掛的單已進入券商佇列，這裡取消一定生效；
+            # 在成交回報（notify_order）裡掛的單同一根 K 棒內取消不了，曾造成兩張停損單都成交而變成空單
+            self._cancel_stop(sid)
             if exits:
                 info["exiting"] = True
                 self.exit_reason[sid] = exits[0]
-                self._cancel_stop(sid)
                 self.close(data=data)
                 continue
-            # 大盤偏空時停損收緊：改掛新的停損單
-            stop = effective_stop(h, bearish, risk)
-            current = self.stop_orders.get(sid)
-            if stop and current is not None and abs(current.created.price - stop) > 1e-9:
-                self.cancel(current)
+            stop = effective_stop(h, bearish, risk)  # 大盤偏空時收緊
+            if stop:
                 self._place_stop(sid, data, pos.size, stop)
                 info["stop_now"] = stop
 
@@ -197,8 +197,10 @@ class PlanStrategy(bt.Strategy):
                 "stop": stop, "target": c.levels.take_profit, "highest": ex.price, "horizons": c.horizons,
                 "entry_price": ex.price, "triggers": list(c.triggers), "score": c.score,
             }
-            self._place_stop(sid, order.data, ex.size, stop)
-            return
+            return  # 停損單在下一次 next() 掛出
+        if self.getposition(order.data).size < 0:
+            self.anomalies.append(f"{d} {sid} 賣出後部位為負，已回補")
+            self.close(data=order.data)
         info = self.book.pop(sid, None)
         if info is None:
             return
@@ -255,4 +257,4 @@ def simulate(plans: dict[date, DayPlan], prices: dict[str, pd.DataFrame], calend
     strat = cerebro.run(runonce=False)[0]
     return {"equity": strat.equity, "exposure": strat.exposure, "trades": strat.trades,
             "open_positions": strat.open_positions,
-            "skipped": strat.skipped, "final_value": cerebro.broker.getvalue()}
+            "skipped": strat.skipped, "anomalies": strat.anomalies, "final_value": cerebro.broker.getvalue()}

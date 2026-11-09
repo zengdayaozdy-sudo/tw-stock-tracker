@@ -80,6 +80,7 @@ def build_metrics(result: dict, benchmarks: dict[str, list[tuple[date, float]]],
         "open_positions": len(result["open_positions"]),
         **exposure_metrics(result.get("exposure") or []),
         "skipped": result["skipped"],
+        "anomalies": result.get("anomalies") or [],
         "benchmarks": {},
     }
     for name, pts in benchmarks.items():
@@ -132,6 +133,8 @@ def render_markdown(m: dict, period: str, plan_label: str, warnings: list[str], 
         "",
         "未下單：" + "、".join(f"{k} {v}" for k, v in m["skipped"].items()),
     ]
+    if m.get("anomalies"):
+        lines += ["", f"**模擬異常 {len(m['anomalies'])} 筆（結果不可信）**：" + "；".join(m["anomalies"][:5])]
     if params.get("overrides"):
         lines += ["", "參數覆寫：" + "、".join(f"`{k}={v}`" for k, v in params["overrides"].items())]
     if warnings:

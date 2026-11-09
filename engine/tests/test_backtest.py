@@ -123,6 +123,23 @@ def test_simulation_deterministic_and_charges_costs():
     assert AS_OF  # 與評分測試共用同一組日期
 
 
+def test_bearish_stop_changes_never_create_short_positions():
+    """大盤燈號每天在偏空與中性之間切換，停損單每天改價：不可出現兩張停損單都成交而變成空單。"""
+    stocks, groups, series = _universe(700)
+    settings = dataclasses.replace(SETTINGS, backtest={**SETTINGS.backtest, "initial_capital": 2_000_000})
+    planner = Planner(settings, stocks, groups, series, {})
+    calendar = stocks["1111"].prices.index[-260:]
+    plans = {t.date(): planner.day(t.date()) for t in calendar}
+    for i, p in enumerate(plans.values()):
+        p.light = "bearish" if i % 2 else "neutral"
+    prices = {sid: f.prices for sid, f in stocks.items()}
+    r = simulate(plans, prices, calendar, settings, {sid: ["測試族群"] for sid in stocks})
+    assert r["anomalies"] == []
+    assert all(0 <= e <= 1.0001 for _d, e in r["exposure"])
+    for t in r["trades"]:
+        assert t["shares"] > 0
+
+
 # ---------- 還原股價與資料清理 ----------
 
 def test_adjust_prices_back_adjusts_only_history():
