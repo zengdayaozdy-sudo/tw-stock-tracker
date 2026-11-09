@@ -86,7 +86,7 @@ Import 本 repo → Root Directory 設為 `web` → 環境變數：
 
 1. `migrate` → `companies` → `seed-groups`（或 GitHub Actions 手動操作執行 `companies`、`seed-groups`）
 2. 網站「自選股」或 `watch add 2330 2317 …` 加入自選股（免費模式上限 100 檔）
-3. 回補歷史：每日排程的 `backfill-new` 每天自動補最多 10 檔；想一次補完可手動 `backfill --years 5`
+3. 回補歷史：每日排程的 `backfill-new` 依本小時剩餘 FinMind 額度自動回補（每次最多 40 檔，上限在 `config/sources.yaml` 的 `backfill_new`）；想一次補完可手動 `backfill --years 5`
 4. 網站「設定」輸入總資金（影響建議張數）
 5. 回測前：`backtest-data --years 5`
 
@@ -129,7 +129,7 @@ Import 本 repo → Root Directory 設為 `web` → 環境變數：
 | `trading-day` | 是否為交易日 |
 | `fetch [--wait-minutes N]` | 抓當日資料＋完整性檢查（未通過結束碼 2） |
 | `backfill [--years N] [代號…]` | 回補歷史（預設全部自選股 3 年） |
-| `backfill-new` | 自動回補歷史不足的自選股與持股（每次最多 10 檔） |
+| `backfill-new` | 自動回補歷史不足的自選股與持股（依剩餘額度，每次最多 40 檔；`--limit N` 可指定） |
 | `liquidity` / `news` / `score` / `filters` | 濾網與評分各步驟 |
 | `signals [--force]` | 買進訊號；資料不完整時暫停（`--force` 僅供除錯） |
 | `holdings` | 持股檢查與賣出提醒 |

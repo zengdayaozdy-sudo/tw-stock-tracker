@@ -117,3 +117,25 @@ def test_schedule_check_alerts_once(repo, database_url):
                  clock=lambda: later, sleep=lambda s: None)
     m2.tick()
     assert len(sent) == 1
+
+
+def test_ex_dividend_day_without_reference_price_is_flagged(repo):
+    with repo.conn.cursor() as cur:
+        cur.execute("INSERT INTO events (stock_id, date, event_type, note) VALUES ('2330', %s, '除權息', '除息')",
+                    (NOW.date(),))
+    repo.conn.commit()
+    line, sent = _line()
+    result = check_once(SETTINGS, repo, FakeQuotes({"2330": 1940.0}), line, NOW)
+    assert result["alerts"] == ["2330"]
+    assert "今日除權息，參考價尚未取得" in sent[0]["messages"][0]["text"]
+
+
+def test_ex_dividend_day_with_reference_price_adjusts_stop(repo):
+    with repo.conn.cursor() as cur:
+        cur.execute("INSERT INTO events (stock_id, date, event_type, note) VALUES ('2330', %s, '除權息', '除息')",
+                    (NOW.date(),))
+        # 參考價 = 前收 2000 − 息 100 → 停損 1950 × 0.95 ≈ 1852.5，現價 1940 不觸發
+        cur.execute("INSERT INTO price_adjustments VALUES ('2330', %s, 'dividend', 2000, 1900)", (NOW.date(),))
+    repo.conn.commit()
+    line, sent = _line()
+    assert check_once(SETTINGS, repo, FakeQuotes({"2330": 1940.0}), line, NOW)["alerts"] == [] and sent == []

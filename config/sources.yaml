@@ -34,6 +34,11 @@ finmind:
     split_price: TaiwanStockSplitPrice                  # 股票分割
     capital_reduction: TaiwanStockCapitalReductionReferencePrice  # 減資
 
+# 每日排程自動回補新加入的自選股：依本小時剩餘 FinMind 額度決定檔數（每檔約 11 次呼叫）
+backfill_new:
+  max_per_run: 40      # 單次上限，避免排程跑太久延後每日報告
+  min_per_run: 0       # 額度不足時不回補（不等下一個整點），留給下次排程
+
 twse:
   verified: true   # 2026-11-08 probe 確認，2026-11-06 實際抓取全市場驗證
   endpoints:

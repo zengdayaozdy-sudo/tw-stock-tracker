@@ -61,8 +61,20 @@ def stop_message(hits: list[dict], now: datetime) -> str:
         src = "" if h["source"] == "last" else "（無成交，以委買價計）"
         lines.append(f"・{h['stock_id']} {h['name'] or ''} 現價 {h['price']:g}{src} ≤ 停損 {h['stop']:g}"
                      f"｜成本 {h['avg_cost']:g}（{h['price'] / h['avg_cost'] - 1:+.1%}）｜{h['shares']:,} 股")
+        if h.get("ex_dividend_unadjusted"):
+            lines.append("  今日除權息，參考價尚未取得、停損未下調，跌幅可能主要來自除權息，請先確認")
     lines.append("請自行判斷是否賣出")
     return "\n".join(lines)
+
+
+def ex_dividend_today(repo: Repository, ids: list[str], today: date) -> set[str]:
+    """今天除權息的股票（事件行事曆）。"""
+    if not ids:
+        return set()
+    with repo.conn.cursor() as cur:
+        cur.execute("SELECT DISTINCT stock_id FROM events WHERE stock_id = ANY(%s) AND event_type = '除權息' "
+                    "AND date = %s", (ids, today))
+        return {r[0] for r in cur.fetchall()}
 
 
 def check_once(settings: Settings, repo: Repository, quotes, line, now: datetime) -> dict[str, Any]:
@@ -78,16 +90,19 @@ def check_once(settings: Settings, repo: Repository, quotes, line, now: datetime
     prices = quotes.fetch({h["stock_id"]: meta.get(h["stock_id"], ("twse", None))[0] for h in holdings})
     done = alerted_today(repo, today)
     adjustments = repo.adjustments([h["stock_id"] for h in holdings])
+    ex_today = ex_dividend_today(repo, [h["stock_id"] for h in holdings], today)
     hits: list[dict] = []
     for h in holdings:
         q = prices.get(h["stock_id"])
-        h, _events = adjust_holding(h, adjustments.get(h["stock_id"]), today)  # 除權息後停損一併下調
+        h, events = adjust_holding(h, adjustments.get(h["stock_id"]), today)  # 除權息後停損一併下調
         stop = effective_stop(h, bearish, settings.risk)
         if q is None or not stop or q.price > stop or h["stock_id"] in done:
             continue
         hits.append({"stock_id": h["stock_id"], "name": meta.get(h["stock_id"], (None, None))[1], "price": q.price,
                      "source": q.source, "stop": stop, "avg_cost": h["avg_cost"], "shares": h["shares"],
-                     "bearish": bearish})
+                     "bearish": bearish,
+                     # 除權息當天早上 FinMind 參考價常還沒公布，停損無法先下調，提醒時標註避免誤判
+                     "ex_dividend_unadjusted": h["stock_id"] in ex_today and not any(d == today for d, _f in events)})
     out: dict[str, Any] = {"checked": len(holdings), "quoted": len(prices), "alerts": [h["stock_id"] for h in hits]}
     if not hits:
         return out

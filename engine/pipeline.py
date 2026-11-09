@@ -223,6 +223,15 @@ def refresh_shareholding(repo: Repository, finmind: FinMindClient, ids: list[str
     return count
 
 
+# 每檔回補的 FinMind 呼叫數：股價、估值、法人、融資券、外資持股、月營收、損益表、資產負債表＋除權息／分割／減資
+BACKFILL_CALLS_PER_STOCK = 8 + len(fm.ADJUSTMENT_DATASETS)
+
+
+def backfill_capacity(remaining_calls: int, cap: int, floor: int = 0) -> int:
+    """依本小時剩餘額度決定這次回補幾檔，不讓排程卡在等下一個整點。"""
+    return max(floor, min(cap, remaining_calls // BACKFILL_CALLS_PER_STOCK))
+
+
 def backfill(repo: Repository, finmind: FinMindClient, ids: list[str], years: int, today: date) -> dict[str, int]:
     """新加入的自選股回補歷史資料（股價、估值、法人、融資券、財報、月營收）。"""
     start = today.replace(year=today.year - years)

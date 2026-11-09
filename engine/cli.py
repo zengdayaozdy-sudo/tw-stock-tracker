@@ -606,7 +606,7 @@ def cmd_sync_config(_args) -> None:
 def cmd_backfill_new(args) -> None:
     """自選股或持股中歷史不足者自動回補（網站新增自選股後由每日排程補齊）。"""
     from engine.joblog import job_run
-    from engine.pipeline import backfill, universe
+    from engine.pipeline import BACKFILL_CALLS_PER_STOCK, backfill, backfill_capacity, universe
 
     settings, conn, repo, _exchange, finmind = _services()
     ids = universe(settings, repo)
@@ -614,9 +614,21 @@ def cmd_backfill_new(args) -> None:
     with conn.cursor() as cur:
         cur.execute("SELECT stock_id, count(*) FROM daily_prices WHERE stock_id = ANY(%s) GROUP BY 1", (ids,))
         counts = dict(cur.fetchall())
-    todo = [s for s in ids if counts.get(s, 0) < need][: args.limit]
-    if not todo:
+    pending = [s for s in ids if counts.get(s, 0) < need]
+    if not pending:
         print("沒有需要回補的股票")
+        return
+    if args.limit:
+        limit = args.limit
+    else:
+        # 自動：用掉本小時剩餘額度（上限見 sources.yaml backfill_new），新股不必一天只補 10 檔
+        cfg = settings.sources["backfill_new"]
+        remaining = finmind.quota.budget - finmind.quota.calls_this_hour
+        limit = backfill_capacity(remaining, cfg["max_per_run"], cfg["min_per_run"])
+        print(f"本小時剩餘 FinMind 額度 {remaining} 次（每檔約 {BACKFILL_CALLS_PER_STOCK} 次），本次回補 {limit} 檔")
+    todo = pending[:limit]
+    if not todo:
+        print(f"額度不足，{len(pending)} 檔待下次排程回補")
         return
     with job_run(conn, "backfill", _parse_date(None)) as run:
         result = backfill(repo, finmind, todo, args.years, _parse_date(None))
@@ -747,7 +759,7 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("backfill-new", help="自動回補歷史不足的自選股與持股")
     # FinMind 一次查詢回傳整段期間，5 年與 3 年呼叫次數相同；回測需要 240 日股價＋3 年自身歷史
     p.add_argument("--years", type=int, default=5)
-    p.add_argument("--limit", type=int, default=10, help="每次最多回補幾檔（控制 FinMind 額度）")
+    p.add_argument("--limit", type=int, default=0, help="每次最多回補幾檔；0＝依本小時剩餘 FinMind 額度自動決定")
     p.set_defaults(func=cmd_backfill_new)
 
     p = sub.add_parser("backtest", help="回測（預設調參區間；--holdout 保留驗證區間只能跑一次）")
