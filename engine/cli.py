@@ -656,7 +656,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.set_defaults(func=cmd_fetch)
 
     p = sub.add_parser("backfill", help="回補自選股歷史資料（使用 FinMind 額度）")
-    p.add_argument("--years", type=int, default=3)
+    p.add_argument("--years", type=int, default=5)
     p.add_argument("stocks", nargs="*", help="股票代號，省略則為全部自選股")
     p.set_defaults(func=cmd_backfill)
 
@@ -729,7 +729,8 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("sync-config", help="把方案與風控設定寫入資料庫供網站使用").set_defaults(func=cmd_sync_config)
 
     p = sub.add_parser("backfill-new", help="自動回補歷史不足的自選股與持股")
-    p.add_argument("--years", type=int, default=3)
+    # FinMind 一次查詢回傳整段期間，5 年與 3 年呼叫次數相同；回測需要 240 日股價＋3 年自身歷史
+    p.add_argument("--years", type=int, default=5)
     p.add_argument("--limit", type=int, default=10, help="每次最多回補幾檔（控制 FinMind 額度）")
     p.set_defaults(func=cmd_backfill_new)
 
