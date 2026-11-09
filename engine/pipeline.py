@@ -64,11 +64,17 @@ def fetch_daily(
 
     # 1. 全市場行情（免費），同時更新股票清單
     prices = exchange.daily_prices(trade_date)
-    latest = max((r["date"] for r in prices), default=None)
-    if latest is None or latest < trade_date:
-        # 官方最新資料不是今天：休市日，或資料尚未更新
+    # 上市、上櫃各自判斷：兩邊更新時間不同（2026-11-09 櫃買已更新、證交所尚未更新）
+    latest_by_market: dict[str, date] = {}
+    for r in prices:
+        m = r["market"]
+        if m not in latest_by_market or r["date"] > latest_by_market[m]:
+            latest_by_market[m] = r["date"]
+    stale = [m for m in ("twse", "tpex") if latest_by_market.get(m, date.min) < trade_date]
+    if stale:
+        # 官方最新資料不是今天：休市日，或其中一個市場尚未更新
         result.market_open = False
-        result.counts["latest_available"] = latest.isoformat() if latest else None
+        result.counts["latest_available"] = {m: d.isoformat() for m, d in latest_by_market.items()}
         return result
     prices = [r for r in prices if r["date"] == trade_date]
 

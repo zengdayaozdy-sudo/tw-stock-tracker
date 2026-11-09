@@ -69,8 +69,9 @@ def test_job_log_failure_recorded(conn):
 
 
 class FakeExchange:
-    def __init__(self, latest=D):
+    def __init__(self, latest=D, tpex_latest=None):
         self.latest = latest
+        self.tpex_latest = tpex_latest or latest
 
     def daily_prices(self, d):
         return [
@@ -78,6 +79,8 @@ class FakeExchange:
              "open": 1000, "high": 1010, "low": 990, "close": 1005, "volume": 10**7, "turnover": 10**10},
             {"stock_id": "2317", "name": "鴻海", "market": "twse", "date": self.latest,
              "open": 200, "high": 205, "low": 198, "close": 204, "volume": 10**7, "turnover": 10**9},
+            {"stock_id": "6488", "name": "環球晶", "market": "tpex", "date": self.tpex_latest,
+             "open": 400, "high": 405, "low": 397, "close": 401, "volume": 10**6, "turnover": 4 * 10**8},
         ]
 
     def valuations(self, d):
@@ -119,13 +122,22 @@ def test_fetch_daily_free_mode(conn):
     result = fetch_daily(settings, repo, FakeExchange(), finmind, D)
     conn.commit()
     assert result.market_open
-    assert result.counts["prices"] == 2
+    assert result.counts["prices"] == 3
     # FinMind 只查自選股，且月營收已有資料後不會重複抓
     assert {sid for _, sid in finmind.calls} == {"2330"}
     assert ("month_revenue", "2330") in finmind.calls
     with conn.cursor() as cur:
         cur.execute("SELECT status FROM stocks WHERE stock_id='2317'")
         assert cur.fetchone()[0] == ["attention"]
+
+
+def test_fetch_waits_until_both_markets_updated(conn):
+    # 2026-11-09 實際情況：櫃買已更新、證交所還是前一交易日
+    settings = load_settings("free")
+    ex = FakeExchange(latest=date(2026, 11, 6), tpex_latest=D)
+    result = fetch_daily(settings, Repository(conn), ex, FakeFinMind(), D)
+    assert not result.market_open
+    assert result.counts["latest_available"] == {"twse": "2026-11-06", "tpex": "2026-11-09"}
 
 
 def test_fetch_skips_holiday(conn):
