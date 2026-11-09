@@ -38,9 +38,9 @@ twse:
   verified: true   # 2026-11-08 probe 確認，2026-11-06 實際抓取全市場驗證
   endpoints:
     daily_all: https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL
-    daily_all_rwd: https://www.twse.com.tw/rwd/zh/afterTrading/MI_INDEX?date={date}&type=ALLBUT0999&response=json  # 網站版（probe 驗證中）
-    valuation_rwd: https://www.twse.com.tw/rwd/zh/afterTrading/BWIBBU_d?date={date}&selectType=ALL&response=json  # 網站版（probe 驗證中）
-    margin_rwd: https://www.twse.com.tw/rwd/zh/marginTrading/MI_MARGN?date={date}&selectType=ALL&response=json  # 網站版（probe 驗證中）
+    # 網站版：當天收盤後即更新（OpenAPI 版約晚一個交易日），2026-11-09 probe 確認；查無資料時改用 OpenAPI
+    daily_all_site: https://www.twse.com.tw/rwd/zh/afterTrading/MI_INDEX?date={date}&type=ALLBUT0999&response=json
+    valuation_site: https://www.twse.com.tw/rwd/zh/afterTrading/BWIBBU_d?date={date}&selectType=ALL&response=json
     valuation_all: https://openapi.twse.com.tw/v1/exchangeReport/BWIBBU_ALL
     margin_all: https://openapi.twse.com.tw/v1/exchangeReport/MI_MARGN
     company_info: https://openapi.twse.com.tw/v1/opendata/t187ap03_L

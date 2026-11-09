@@ -78,6 +78,7 @@ def _is_common_stock(code: str | None) -> bool:
 class ExchangeClient:
     settings: Settings
     http: HttpClient
+    _openapi_date: date | None = field(default=None, init=False, repr=False)
     last_errors: list[str] = field(default_factory=list)
 
     def _url(self, market: str, key: str, **fmt: str) -> str:
@@ -87,14 +88,43 @@ class ExchangeClient:
     def raw(self, market: str, key: str, **fmt: str) -> Any:
         return self.http.get_json(self._url(market, key, **fmt))
 
+    def _twse_site(self, key: str, trade_date: date, table_title: str | None = None) -> list[dict] | None:
+        """證交所網站版（當天更新）。查無當日資料或格式不符時回傳 None，由呼叫端改用 OpenAPI。"""
+        if key not in self.settings.sources["twse"]["endpoints"]:
+            return None
+        try:
+            payload = self.raw("twse", key, date=trade_date.strftime("%Y%m%d"))
+        except SourceError:
+            return None
+        if not isinstance(payload, dict) or payload.get("stat") not in (None, "OK"):
+            return None
+        if table_title:
+            for t in payload.get("tables") or []:
+                if table_title in (t.get("title") or "") and t.get("data"):
+                    return [dict(zip(t.get("fields") or [], row, strict=False)) for row in t["data"]]
+            return None
+        return _table(payload) or None
+
+    def openapi_date(self) -> date | None:
+        """證交所 OpenAPI 目前資料的交易日（OpenAPI 各資料集同步更新，融資券沒有日期欄位，以此為準）。"""
+        if self._openapi_date is None:
+            dates = [parse_tw_date(pick(r, "Date")) for r in _rows(self.raw("twse", "daily_all"))]
+            self._openapi_date = max((d for d in dates if d), default=None)
+        return self._openapi_date
+
     # ---------- 每日行情 ----------
     def daily_prices(self, trade_date: date) -> list[dict]:
         out: list[dict] = []
-        for r in _rows(self.raw("twse", "daily_all")):
-            code = pick(r, "Code", "證券代號")
+        site = self._twse_site("daily_all_site", trade_date, table_title="每日收盤行情")
+        if site is not None:
+            twse_rows, twse_date = site, trade_date
+        else:
+            twse_rows, twse_date = _rows(self.raw("twse", "daily_all")), None
+        for r in twse_rows:
+            code = str(pick(r, "Code", "證券代號") or "").strip()
             if not _is_common_stock(code):
                 continue
-            d = parse_tw_date(pick(r, "Date", "日期")) or trade_date
+            d = twse_date or parse_tw_date(pick(r, "Date", "日期")) or trade_date
             out.append(
                 {
                     "stock_id": code,
@@ -134,14 +164,19 @@ class ExchangeClient:
     def valuations(self, trade_date: date) -> list[dict]:
         out: list[dict] = []
         for market, code_keys in (("twse", ("Code", "證券代號")), ("tpex", ("SecuritiesCompanyCode", "Code"))):
-            for r in _rows(self.raw(market, "valuation_all")):
-                code = pick(r, *code_keys)
+            site = self._twse_site("valuation_site", trade_date) if market == "twse" else None
+            rows = site if site is not None else _rows(self.raw(market, "valuation_all"))
+            for r in rows:
+                code = str(pick(r, *code_keys) or "").strip()
                 if not _is_common_stock(code):
                     continue
+                d = trade_date if site is not None else parse_tw_date(pick(r, "Date", "資料日期"))
+                if d is None:
+                    continue  # 沒有日期無法確認是哪一天的資料，寧可不存
                 out.append(
                     {
                         "stock_id": code,
-                        "date": parse_tw_date(pick(r, "Date", "資料日期")) or trade_date,
+                        "date": d,
                         "pe": to_number(pick(r, "PEratio", "PriceEarningRatio", "PERatio", "本益比")),
                         "pb": to_number(pick(r, "PBratio", "PriceBookRatio", "股價淨值比")),
                         "dividend_yield": to_number(pick(r, "DividendYield", "YieldRatio", "殖利率(%)")),
@@ -190,16 +225,22 @@ class ExchangeClient:
 
     # ---------- 融資融券 ----------
     def margin(self, trade_date: date) -> list[dict]:
+        """融資融券。證交所 OpenAPI 沒有日期欄位，以 OpenAPI 每日行情的日期標記（通常是前一交易日），
+        不會把舊資料標成今天；當天的上市融資券會在隔天的排程補上。"""
         out: list[dict] = []
         for market, code_keys in (("twse", ("Code", "股票代號")), ("tpex", ("SecuritiesCompanyCode", "Code"))):
+            fallback = self.openapi_date() if market == "twse" else None
             for r in _rows(self.raw(market, "margin_all")):
-                code = pick(r, *code_keys)
+                code = str(pick(r, *code_keys) or "").strip()
                 if not _is_common_stock(code):
+                    continue
+                d = parse_tw_date(pick(r, "Date")) or fallback
+                if d is None:
                     continue
                 out.append(
                     {
                         "stock_id": code,
-                        "date": parse_tw_date(pick(r, "Date")) or trade_date,
+                        "date": d,
                         "margin_balance": to_int(
                             pick(r, "融資今日餘額", "MarginPurchaseBalance", "MarginPurchaseTodayBalance")
                         ),
