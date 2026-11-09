@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, timedelta
 
 from engine.config import load_settings
 from engine.joblog import job_run
@@ -150,3 +150,20 @@ def test_fetch_skips_weekend(conn):
     settings = load_settings("free")
     result = fetch_daily(settings, Repository(conn), FakeExchange(), FakeFinMind(), date(2026, 11, 8))
     assert not result.market_open
+
+
+def test_shareholding_history_backfilled_any_day(conn):
+    # 2026-11-10 是星期二：歷史不足的自選股仍要補外資持股一年
+    from engine.pipeline import refresh_shareholding
+
+    repo = Repository(conn)
+    _stocks(repo)
+    finmind = FakeFinMind()
+    refresh_shareholding(repo, finmind, ["2330"], date(2026, 11, 10))
+    assert ("shareholding", "2330") in finmind.calls
+    finmind.calls.clear()
+    # 已有足夠歷史時，非週一不再抓
+    repo.upsert_chips([{"stock_id": "2330", "date": date(2026, 9, 1) + timedelta(days=i), "foreign_holding_pct": 70.0}
+                       for i in range(40)])
+    refresh_shareholding(repo, finmind, ["2330"], date(2026, 11, 10))
+    assert finmind.calls == []

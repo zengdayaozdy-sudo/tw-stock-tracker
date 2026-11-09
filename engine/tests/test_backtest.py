@@ -155,3 +155,13 @@ def test_finmind_zero_price_rows_skipped_and_adjustments_parsed():
     ], "dividend")
     assert adj == [{"stock_id": "2330", "date": date(2026, 6, 11), "kind": "dividend",
                     "before_price": 2255.0, "after_price": 2248.99}]
+
+
+def test_exposure_metrics():
+    from datetime import date as _d
+
+    from engine.backtest.report import exposure_metrics
+
+    m = exposure_metrics([(_d(2026, 1, 1), 0.0), (_d(2026, 1, 2), 0.5), (_d(2026, 1, 3), 1.0), (_d(2026, 1, 4), 0.5)])
+    assert m["avg_exposure"] == 0.5 and m["invested_days"] == 0.75
+    assert exposure_metrics([]) == {"avg_exposure": None, "invested_days": None}

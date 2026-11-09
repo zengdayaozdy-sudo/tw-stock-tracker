@@ -37,6 +37,9 @@ class StubRepo:
     def upsert_chips(self, rows):
         return len(list(rows))
 
+    def holding_history_days(self, ids):
+        return {}  # 最壞情況：都沒有外資持股歷史
+
     def commit(self):
         pass
 
@@ -46,14 +49,14 @@ def test_free_plan_daily_finmind_usage_within_quota():
     fm, repo = CountingFinMind(), StubRepo()
     ids = [str(1101 + i) for i in range(30)]
     refresh_financials(repo, fm, ids, MONDAY)              # 月營收＋季報（損益、資產負債）
-    refresh_shareholding(repo, fm, ids, MONDAY)            # 週一：外資持股
+    refresh_shareholding(repo, fm, ids, MONDAY)            # 外資持股（歷史不足者補一年）
     refresh_adjustments(repo, fm, ids, MONDAY)             # 週一：除權息、分割、減資參考價
     for _ in FINMIND_SERIES:                               # 大盤燈號序列與 0050
         fm.fetch("series", None, MONDAY)
-    backfill(repo, fm, ids[:10], 3, MONDAY)                # backfill-new 每次最多 10 檔
+    backfill(repo, fm, ids[:10], 3, MONDAY)                # backfill-new 每次最多 10 檔（每檔 11 次）
     budget = int(settings.sources["finmind"]["hourly_limit"]["free"] * settings.sources["finmind"]["safety_margin"])
     assert fm.calls <= budget, f"FinMind 呼叫 {fm.calls} 次，超過每小時預算 {budget}"
-    assert fm.calls == 30 * 3 + 30 + 30 * 3 + len(FINMIND_SERIES) + 10 * 10
+    assert fm.calls == 30 * 3 + 30 + 30 * 3 + len(FINMIND_SERIES) + 10 * 11
 
 
 def test_plan_switch_unlocks_without_code_change():

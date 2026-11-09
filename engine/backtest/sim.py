@@ -72,13 +72,16 @@ class PlanStrategy(bt.Strategy):
         self.stop_refs: dict[str, set[int]] = {}       # 每檔所有停損單的編號（notify_order 收到的是複本，用 ref 比對）
         self.exit_reason: dict[str, str] = {}
         self.equity: list[tuple[date, float]] = []
+        self.exposure: list[tuple[date, float]] = []  # 每日持股市值佔總資產比例
         self.trades: list[dict[str, Any]] = []
         self.skipped: dict[str, int] = {"資金不足": 0, "張數為 0": 0, "限價未成交": 0}
 
     # ---------- 每日 ----------
     def next(self):
         d = self.datas[0].datetime.date(0)
-        self.equity.append((d, self.broker.getvalue()))
+        value = self.broker.getvalue()
+        self.equity.append((d, value))
+        self.exposure.append((d, 1 - self.broker.getcash() / value if value else 0.0))
         # 前一天的限價買單若今天沒成交就取消（不追價）
         for sid, (order, _c) in list(self.pending.items()):
             if order.alive():
@@ -250,5 +253,6 @@ def simulate(plans: dict[date, DayPlan], prices: dict[str, pd.DataFrame], calend
     cerebro.addstrategy(PlanStrategy, plans=plans, risk=risk, groups_of=groups_of,
                         allow_odd=bt_cfg.get("allow_odd_lots", True), closes=closes, names=names or {})
     strat = cerebro.run(runonce=False)[0]
-    return {"equity": strat.equity, "trades": strat.trades, "open_positions": strat.open_positions,
+    return {"equity": strat.equity, "exposure": strat.exposure, "trades": strat.trades,
+            "open_positions": strat.open_positions,
             "skipped": strat.skipped, "final_value": cerebro.broker.getvalue()}

@@ -21,7 +21,7 @@ from typing import Any
 from engine.config import TZ, Settings
 from engine.joblog import heartbeat
 from engine.notify.alerts import MONITOR_JOB
-from engine.portfolio.monitor import effective_stop
+from engine.portfolio.monitor import adjust_holding, effective_stop
 from engine.repository import Repository
 
 log = logging.getLogger(__name__)
@@ -77,9 +77,11 @@ def check_once(settings: Settings, repo: Repository, quotes, line, now: datetime
         meta = {s: (m, n) for s, m, n in cur.fetchall()}
     prices = quotes.fetch({h["stock_id"]: meta.get(h["stock_id"], ("twse", None))[0] for h in holdings})
     done = alerted_today(repo, today)
+    adjustments = repo.adjustments([h["stock_id"] for h in holdings])
     hits: list[dict] = []
     for h in holdings:
         q = prices.get(h["stock_id"])
+        h, _events = adjust_holding(h, adjustments.get(h["stock_id"]), today)  # 除權息後停損一併下調
         stop = effective_stop(h, bearish, settings.risk)
         if q is None or not stop or q.price > stop or h["stock_id"] in done:
             continue

@@ -200,13 +200,25 @@ def refresh_adjustments(repo: Repository, finmind: FinMindClient, ids: list[str]
     return count
 
 
+SHAREHOLDING_MIN_DAYS = 30     # 外資持股變化需要至少 20 個交易日的歷史
+SHAREHOLDING_HISTORY_DAYS = 400
+
+
 def refresh_shareholding(repo: Repository, finmind: FinMindClient, ids: list[str], today: date) -> int:
-    """外資持股比例：免費模式每週一更新即可。"""
-    if today.weekday() != 0:
-        return 0
+    """外資持股比例：歷史不足的股票一次補一年（任何一天都會補），其餘每週一補最近 10 天。
+
+    原本只在週一抓最近 10 天，新加入的股票要一個多月才有足夠歷史，外資持股變化指標一直以中性分計。
+    """
+    have = repo.holding_history_days(ids)
     count = 0
     for sid in ids:
-        rows = finmind.fetch("shareholding", sid, today - timedelta(days=10))
+        if have.get(sid, 0) < SHAREHOLDING_MIN_DAYS:
+            start = today - timedelta(days=SHAREHOLDING_HISTORY_DAYS)
+        elif today.weekday() == 0:
+            start = today - timedelta(days=10)
+        else:
+            continue
+        rows = finmind.fetch("shareholding", sid, start)
         count += repo.upsert_chips(fm.parse_shareholding(rows))
     return count
 
@@ -222,6 +234,8 @@ def backfill(repo: Repository, finmind: FinMindClient, ids: list[str], years: in
             fm.parse_institutional(finmind.fetch("institutional", sid, start))
         )
         counts["margin"] += repo.upsert_chips(fm.parse_margin(finmind.fetch("margin", sid, start)))
+        counts["shareholding"] = counts.get("shareholding", 0) + repo.upsert_chips(
+            fm.parse_shareholding(finmind.fetch("shareholding", sid, start)))
         counts["financials"] += repo.upsert(
             "financials", fm.parse_month_revenue(finmind.fetch("month_revenue", sid, start))
         )

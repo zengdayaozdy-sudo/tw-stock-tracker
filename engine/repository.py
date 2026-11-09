@@ -580,6 +580,14 @@ class Repository:
             )
 
 
+    def holding_history_days(self, ids: list[str]) -> dict[str, int]:
+        """每檔股票已有幾天的外資持股比例資料。"""
+        with self.conn.cursor() as cur:
+            cur.execute(
+                "SELECT stock_id, count(*) FROM chips WHERE stock_id = ANY(%s) AND foreign_holding_pct IS NOT NULL "
+                "GROUP BY stock_id", (ids,))
+            return {sid: n for sid, n in cur.fetchall()}
+
     def adjustments(self, ids: list[str]) -> dict[str, list[tuple[date, float]]]:
         """{stock_id: [(日期, 調整係數 = 參考價 ÷ 前一日收盤)]}，同一天多筆相乘。"""
         with self.conn.cursor() as cur:

@@ -61,6 +61,15 @@ def align(points: list[tuple[date, float]], start: date, end: date) -> list[tupl
     return [(d, v) for d, v in points if start <= d <= end]
 
 
+def exposure_metrics(points: list[tuple[date, float]]) -> dict:
+    """平均資金使用率與有持股的天數比例：用來分辨報酬落後是選股問題，還是資金閒置太多。"""
+    if not points:
+        return {"avg_exposure": None, "invested_days": None}
+    values = [v for _d, v in points]
+    return {"avg_exposure": sum(values) / len(values),
+            "invested_days": sum(1 for v in values if v > 0.01) / len(values)}
+
+
 def build_metrics(result: dict, benchmarks: dict[str, list[tuple[date, float]]], start: date, end: date) -> dict:
     eq = result["equity"]
     out = {
@@ -69,6 +78,7 @@ def build_metrics(result: dict, benchmarks: dict[str, list[tuple[date, float]]],
         "total_return": total_return(eq), "cagr": cagr(eq), "max_drawdown": max_drawdown(eq),
         **trade_metrics(result["trades"]),
         "open_positions": len(result["open_positions"]),
+        **exposure_metrics(result.get("exposure") or []),
         "skipped": result["skipped"],
         "benchmarks": {},
     }
@@ -76,6 +86,10 @@ def build_metrics(result: dict, benchmarks: dict[str, list[tuple[date, float]]],
         b = align(pts, start, end)
         out["benchmarks"][name] = {"total_return": total_return(b), "cagr": cagr(b), "max_drawdown": max_drawdown(b)}
     return out
+
+
+def _ratio(x: float | None) -> str:
+    return "—" if x is None else f"{x:.0%}"
 
 
 def _pct(x: float | None, digits: int = 1) -> str:
@@ -106,6 +120,8 @@ def render_markdown(m: dict, period: str, plan_label: str, warnings: list[str], 
         "|---|---|",
         f"| 交易次數 | {m['trades']}（勝 {m['wins']}／敗 {m['losses']}） |",
         f"| 勝率 | {win_rate} |",
+        f"| 平均資金使用率 | {_ratio(m.get('avg_exposure'))} |",
+        f"| 有持股的交易日 | {_ratio(m.get('invested_days'))} |",
         f"| 平均獲利 | {_pct(m['avg_win_pct'], 2)} |",
         f"| 平均虧損 | {_pct(m['avg_loss_pct'], 2)} |",
         f"| 期望值（每筆） | {_pct(m['expectancy_pct'], 2)} |",

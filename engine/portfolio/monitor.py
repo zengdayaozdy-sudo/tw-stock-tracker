@@ -9,6 +9,7 @@ from __future__ import annotations
 from datetime import date, timedelta
 from typing import Any
 
+from engine.adjust import adjust_points
 from engine.config import Settings
 from engine.repository import Repository
 from engine.signals.levels import round_tick
@@ -21,6 +22,26 @@ EXIT_LABELS = {
     "stale": "持有過久未上漲",
     "news": "消息面重大利空",
 }
+
+
+def adjust_holding(h: dict, adjustments: list[tuple[date, float]] | None, as_of: date) -> tuple[dict, list]:
+    """開倉後遇到除權息、分割或減資：成本、停損、停利換算成今天的價格基準。
+
+    避免除息當天股價自然下跌被誤判為跌破停損或回落停利。回傳 (換算後的持股, 開倉後的調整事件)。
+    最高收盤改由還原後的歷史重新計算。
+    """
+    events = [(d, f) for d, f in (adjustments or []) if h["opened_date"] < d <= as_of]
+    if not events:
+        return h, []
+    factor = 1.0
+    for _d, f in events:
+        factor *= f
+    out = dict(h)
+    for key in ("avg_cost", "stop_loss", "take_profit"):
+        if out.get(key):
+            out[key] = float(out[key]) * factor
+    out["highest_close"] = None
+    return out, events
 
 
 def effective_stop(h: dict, bearish: bool, cfg: dict) -> float | None:
@@ -84,15 +105,19 @@ def run_holdings(settings: Settings, repo: Repository, as_of: date) -> dict[str,
     names = repo.stock_names([h["stock_id"] for h in holdings])
     signals: list[dict] = []
     missing: list[str] = []
+    adjustments = repo.adjustments([h["stock_id"] for h in holdings]) if holdings else {}
     for h in holdings:
         start = min(h["opened_date"], as_of - timedelta(days=10))
         closes = repo.price_history(h["stock_id"], start, as_of)
         scores = repo.latest_scores(h["stock_id"], as_of)
-        result = check_holding(h, closes, scores, news.get(h["stock_id"], []), as_of, bearish, settings.risk)
+        adj_h, events = adjust_holding(h, adjustments.get(h["stock_id"]), as_of)
+        if events:
+            closes = adjust_points(closes, events)
+        result = check_holding(adj_h, closes, scores, news.get(h["stock_id"], []), as_of, bearish, settings.risk)
         if result is None:
             missing.append(h["stock_id"])
             continue
-        if result["highest"] > (h.get("highest_close") or 0):
+        if not events and result["highest"] > (h.get("highest_close") or 0):
             repo.save_holding({**h, "highest_close": result["highest"]})
         if not result["triggered"]:
             continue
@@ -106,7 +131,8 @@ def run_holdings(settings: Settings, repo: Repository, as_of: date) -> dict[str,
             "reason": f"{'、'.join(labels)}：{'；'.join(result['triggered'].values())}",
             "detail": {"name": names.get(h["stock_id"]), "close": result["close"], "highest": result["highest"],
                        "avg_cost": h["avg_cost"], "shares": h["shares"], "gain": result["gain"],
-                       "held_days": result["held_days"], "triggered": result["triggered"], "bearish": bearish},
+                       "held_days": result["held_days"], "triggered": result["triggered"], "bearish": bearish,
+                       "adjusted_for": [d.isoformat() for d, _f in events]},
         })
     repo.replace_signals(as_of, "sell", signals)
     repo.conn.commit()

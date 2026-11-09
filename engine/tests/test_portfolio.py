@@ -122,3 +122,29 @@ def test_trade_stats_and_benchmarks():
 def test_trade_stats_empty():
     st = trade_stats([], {}, 1_000_000, AS_OF, {"taiex": []})
     assert st["closed_trades"] == 0 and st["win_rate"] is None and st["start"] is None
+
+
+def test_ex_dividend_drop_is_not_stop_loss():
+    # 成本 100、停損 92；除息 10 元（係數 0.9）後收盤 89，還原後並未跌破停損
+    from engine.adjust import adjust_points
+    from engine.portfolio.monitor import adjust_holding
+
+    days = _days(10)
+    closes = list(zip(days, [100] * 8 + [90, 89], strict=True))
+    h = _holding()
+    raw = check_holding(h, closes, {}, [], AS_OF, False, RISK)
+    assert "stop_loss" in raw["triggered"]  # 未調整時會誤判
+
+    events_in = [(days[8], 0.9)]
+    adj_h, events = adjust_holding(h, events_in, AS_OF)
+    assert adj_h["avg_cost"] == pytest.approx(90) and adj_h["stop_loss"] == pytest.approx(82.8)
+    r = check_holding(adj_h, adjust_points(closes, events), {}, [], AS_OF, False, RISK)
+    assert "stop_loss" not in r["triggered"]
+
+
+def test_adjust_holding_ignores_events_before_open():
+    from engine.portfolio.monitor import adjust_holding
+
+    h = _holding()
+    same, events = adjust_holding(h, [(h["opened_date"], 0.9), (date(2020, 1, 2), 0.5)], AS_OF)
+    assert events == [] and same is h
