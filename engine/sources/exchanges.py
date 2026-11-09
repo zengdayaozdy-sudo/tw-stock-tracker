@@ -355,6 +355,46 @@ class ExchangeClient:
                 )
         return out
 
+    def mops_announcements(self, day: date) -> list[dict]:
+        """公開資訊觀測站當日重大訊息（上市＋上櫃全部，含前一日 17:30 以後）。"""
+        cfg = self.settings.sources["mops"]
+        payload = {"year": str(day.year - 1911), "month": f"{day.month:02d}", "day": f"{day.day:02d}"}
+        resp = self.http.post_json(cfg["announcements"], payload)
+        if not isinstance(resp, dict) or resp.get("code") != 200:
+            raise SourceError(f"公開資訊觀測站回應異常：{str(resp)[:120]}")
+        out: list[dict] = []
+        for row in (resp.get("result") or {}).get("data") or []:
+            if not isinstance(row, list) or len(row) < 5:
+                continue
+            code = str(row[2]).strip()
+            params = row[5].get("parameters") if len(row) > 5 and isinstance(row[5], dict) else None
+            if not _is_common_stock(code) or (params and params.get("marketKind") not in ("sii", "otc")):
+                continue  # 只留上市、上櫃普通股
+            title = " ".join(str(row[4] or "").split())
+            if not title:
+                continue
+            out.append({
+                "stock_id": code,
+                "published_at": _tw_datetime(row[0], str(row[1]).replace(":", "")),
+                "source": "mops",
+                "title": title,
+                "body": None,
+                "url": None,
+                "detail_params": params,
+            })
+        return out
+
+    def mops_detail(self, params: dict) -> str | None:
+        """重大訊息明細的「說明」欄。"""
+        resp = self.http.post_json(self.settings.sources["mops"]["announcement_detail"], params)
+        result = (resp or {}).get("result") or {}
+        titles = [t.get("main") for t in result.get("titles") or []]
+        rows = result.get("data") or []
+        if not rows or "說明" not in titles:
+            return None
+        text = rows[0][titles.index("說明")]
+        return str(text).strip()[:4000] or None
+
     def ex_dividend_events(self) -> list[dict]:
         out: list[dict] = []
         for r in _rows(self.raw("twse", "ex_dividend")):

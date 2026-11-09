@@ -223,6 +223,13 @@ class Repository:
             )
         return len(rows)
 
+    def existing_news_keys(self, keys: list[str]) -> set[str]:
+        if not keys:
+            return set()
+        with self.conn.cursor() as cur:
+            cur.execute("SELECT dedup_key FROM news WHERE dedup_key = ANY(%s)", (keys,))
+            return {r[0] for r in cur.fetchall()}
+
     def unjudged_news(self, ids: list[str], since: datetime, limit: int) -> list[dict]:
         with self.conn.cursor() as cur:
             cur.execute(

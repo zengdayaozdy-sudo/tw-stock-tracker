@@ -88,6 +88,17 @@ ai:
   ollama_timeout_seconds: 120
   claude_model: claude-opus-5-5   # 可用環境變數 ANTHROPIC_MODEL 覆寫
 
+# 公開資訊觀測站新版 API（2026-11-09 於 GitHub Actions 實測）
+# 列表：POST {year: 民國年, month, day} → result.data = [[發言日期, 發言時間, 代號, 名稱, 主旨, {parameters}], ...]
+#      上市、上櫃、興櫃、公開發行全部一起回傳（一天約 600 則）；每日清單含前一日 17:30 以後的訊息
+# 明細：POST 列表每筆的 parameters → result.titles 與 result.data，取「說明」欄
+mops:
+  verified: true
+  announcements: https://mops.twse.com.tw/mops/api/t05st02
+  announcement_detail: https://mops.twse.com.tw/mops/api/t05st02_detail
+  page: https://mops.twse.com.tw/mops/#/web/t05st02
+  max_details_per_run: 80      # 只有自選股的訊息才抓明細，每次上限
+
 http:
   timeout_seconds: 30
   max_retries: 4

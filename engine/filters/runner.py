@@ -53,14 +53,36 @@ def run_liquidity(settings: Settings, repo: Repository, as_of: date) -> dict[str
 
 # ---------- 步驟 4：消息面排雷 ----------
 
-def collect_news(settings: Settings, repo: Repository, exchange, http, ids: list[str]) -> dict[str, Any]:
+def collect_news(settings: Settings, repo: Repository, exchange, http, ids: list[str],
+                 as_of: date | None = None) -> dict[str, Any]:
     wanted = set(ids)
     items: list[dict] = []
     errors: list[str] = []
+    source = "mops"
     try:
-        items += [a for a in exchange.announcements() if a["stock_id"] in wanted]
+        # 公開資訊觀測站：今天與前一天（15:30 之後到 17:30 前的訊息只會出現在當天清單，隔天才抓得到）
+        day = as_of or date.today()
+        for d in (day - timedelta(days=1), day):
+            items += [a for a in exchange.mops_announcements(d) if a["stock_id"] in wanted]
+        limit = settings.sources.get("mops", {}).get("max_details_per_run", 80)
+        known = repo.existing_news_keys([dedup_key(it) for it in items])
+        fetched = 0
+        for it in items:
+            if fetched >= limit or not it.get("detail_params") or dedup_key(it) in known:
+                continue
+            try:
+                it["body"] = exchange.mops_detail(it["detail_params"])
+            except Exception as e:
+                errors.append(f"重大訊息明細抓取失敗 {it['stock_id']}：{e}")
+            fetched += 1
     except Exception as e:
-        errors.append(f"重大訊息抓取失敗：{e}")
+        errors.append(f"公開資訊觀測站重大訊息抓取失敗，改用 OpenAPI：{e}")
+        source = "openapi"
+        items = []
+        try:
+            items += [a for a in exchange.announcements() if a["stock_id"] in wanted]
+        except Exception as e2:
+            errors.append(f"重大訊息抓取失敗：{e2}")
     for template in settings.filters["news"].get("rss_feeds") or []:
         for sid in ids:
             url = template.format(stock_id=sid)
@@ -72,7 +94,7 @@ def collect_news(settings: Settings, repo: Repository, exchange, http, ids: list
         it["dedup_key"] = dedup_key(it)
     repo.insert_news(items)
     repo.conn.commit()
-    return {"collected": len(items), "errors": errors}
+    return {"collected": len(items), "announcement_source": source, "errors": errors}
 
 
 def judge_news(settings: Settings, repo: Repository, judge, ids: list[str], as_of: date) -> dict[str, Any]:
@@ -96,7 +118,7 @@ def run_news(settings: Settings, repo: Repository, exchange, http, judge, as_of:
     cfg = settings.filters["news"]
     out: dict[str, Any] = {"universe": len(ids)}
     if collect:
-        out.update(collect_news(settings, repo, exchange, http, ids))
+        out.update(collect_news(settings, repo, exchange, http, ids, as_of))
     out.update(judge_news(settings, repo, judge, ids, as_of))
     since = _day_start(as_of - timedelta(days=cfg["lookback_days"]))
     flags = news_flags(repo.negative_news(ids, since, _day_end(as_of)), cfg)

@@ -96,11 +96,17 @@ class HttpClient:
     def get_text(self, url: str, params: dict[str, Any] | None = None) -> str:
         return self._get(url, params, lambda r: r.text)
 
-    def _get(self, url: str, params: dict[str, Any] | None, parse: Callable[[httpx.Response], Any]) -> Any:
+    def post_json(self, url: str, payload: dict[str, Any]) -> Any:
+        """POST JSON 並解析 JSON 回應（公開資訊觀測站新版 API）。"""
+        return self._get(url, None, lambda r: r.json(), payload=payload)
+
+    def _get(self, url: str, params: dict[str, Any] | None, parse: Callable[[httpx.Response], Any],
+             payload: dict[str, Any] | None = None) -> Any:
         last_error: Exception | None = None
         for attempt in range(self.max_retries + 1):
             try:
-                resp = self.client.get(url, params=params)
+                resp = (self.client.post(url, json=payload) if payload is not None
+                        else self.client.get(url, params=params))
                 if resp.status_code == 429 or resp.status_code >= 500:
                     raise SourceError(f"HTTP {resp.status_code}")
                 resp.raise_for_status()

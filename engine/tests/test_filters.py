@@ -458,3 +458,38 @@ def test_finmind_market_parsers():
          "short_open_interest_balance_volume": 2},
     ])
     assert oi == [{"series": "foreign_tx_oi", "date": date(2026, 11, 6), "value": -99930}]
+
+
+MOPS_LIST = {"code": 200, "message": "查詢成功", "result": {"titles": [], "data": [
+    ["115/11/09", "11:14:25", "2344", "華邦電", "澄清媒體報導",
+     {"parameters": {"serialNumber": 1, "companyId": "2344", "marketKind": "sii", "enterDate": "1151109"},
+      "apiName": "t05st02_detail"}],
+    ["115/11/09", "13:32:16", "4551", "智伸科", "公告資金貸與\r\n第二十五條",
+     {"parameters": {"serialNumber": 1, "companyId": "4551", "marketKind": "otc", "enterDate": "1151109"}}],
+    ["115/11/09", "09:00:00", "7777", "興櫃公司", "興櫃不收",
+     {"parameters": {"serialNumber": 1, "companyId": "7777", "marketKind": "rotc", "enterDate": "1151109"}}],
+    ["115/11/09", "09:00:00", "00878", "ETF", "ETF 不收", {"parameters": {"marketKind": "sii"}}],
+]}}
+MOPS_DETAIL = {"code": 200, "result": {
+    "titles": [{"main": "序號"}, {"main": "發言日期"}, {"main": "主旨"}, {"main": "說明"}],
+    "data": [[1, "115/11/09", "澄清媒體報導", "1.事實發生日:115/11/09\n2.報導內容:營收"]]}}
+
+
+def test_mops_announcements_parsing():
+    ex = _exchange({"t05st02_detail": MOPS_DETAIL, "t05st02": MOPS_LIST})
+    items = ex.mops_announcements(date(2026, 11, 9))
+    assert [i["stock_id"] for i in items] == ["2344", "4551"]  # 興櫃、ETF 排除
+    assert items[0]["published_at"] == datetime(2026, 11, 9, 11, 14, 25, tzinfo=TZ)
+    assert items[1]["title"] == "公告資金貸與 第二十五條"
+    assert items[0]["source"] == "mops"
+    assert ex.mops_detail(items[0]["detail_params"]).startswith("1.事實發生日")
+
+
+def test_mops_error_response_raises():
+    ex = _exchange({"t05st02": {"code": 500, "message": "傳入參數異常", "result": None}})
+    try:
+        ex.mops_announcements(date(2026, 11, 9))
+    except Exception as e:
+        assert "異常" in str(e)
+    else:
+        raise AssertionError("應該丟出錯誤")

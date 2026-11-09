@@ -210,3 +210,42 @@ def test_filters_step_sponsor_plan_uses_market_wide_groups(repo):
     result = run_filters(settings, repo, FakeExchange(), FakeFinMind(), AS_OF)
     assert result["groups_ranked"] == 4
     assert "1101" in screen_summary(repo, AS_OF)
+
+
+class MopsExchange(FakeExchange):
+    def __init__(self):
+        super().__init__()
+        self.days = []
+        self.details = 0
+
+    def mops_announcements(self, day):
+        self.days.append(day)
+        t = datetime(day.year, day.month, day.day, 16, 0, tzinfo=TZ)
+        return [{"stock_id": "1101", "published_at": t, "source": "mops", "title": f"董事會決議現金增資 {day}",
+                 "body": None, "url": None, "detail_params": {"companyId": "1101"}},
+                {"stock_id": "8888", "published_at": t, "source": "mops", "title": "現金增資",
+                 "body": None, "url": None, "detail_params": {"companyId": "8888"}}]
+
+    def mops_detail(self, params):
+        self.details += 1
+        return "發行新股"
+
+
+def test_collect_news_uses_mops_today_and_yesterday(repo):
+    from engine.filters.runner import collect_news
+
+    settings = load_settings("free")
+    ex = MopsExchange()
+    out = collect_news(settings, repo, ex, None, ["1101", "2330"], AS_OF)
+    assert out["announcement_source"] == "mops"
+    assert ex.days == [AS_OF - timedelta(days=1), AS_OF]
+    assert out["collected"] == 2 and ex.details == 2  # 8888 不在名單、不抓明細
+    collect_news(settings, repo, ex, None, ["1101", "2330"], AS_OF)
+    assert ex.details == 2  # 已存在的訊息不重抓明細
+
+
+def test_collect_news_falls_back_to_openapi(repo):
+    from engine.filters.runner import collect_news
+
+    out = collect_news(load_settings("free"), repo, FakeExchange(), None, ["1101", "2330"], AS_OF)
+    assert out["announcement_source"] == "openapi" and out["collected"] == 2
