@@ -14,7 +14,7 @@
 | 8 | 費城半導體、台積電 ADR、台指期未平倉的免費資料來源 | 已確認（2026-11-08 實測）：FinMind USStockPrice（^SOX、TSM）、TaiwanExchangeRate（USD）、TaiwanFuturesInstitutionalInvestors（TX），不帶 token 也可取得 |
 | 9 | 回測採用 FinLab 或開源套件 | 已決定（2026-11-09）：backtrader，理由見 decisions.md |
 | 10 | 盤中監控常駐程式要跑在哪台電腦（作業系統） | 已決定（2026-11-08）：擁有者的 Mac，以 launchd 啟動（deploy/launchd/install.sh） |
-| 11 | FinMind 財報 type 名稱（EPS、GrossProfit、OperatingIncome、IncomeAfterTaxes、Equity、Liabilities、TotalAssets）需實測確認，名稱寫在 engine/scoring/indicators.py 的 METRIC_KEYS | 回補資料後檢查評分拆解是否還有「資料缺漏」 |
+| 11 | FinMind 財報 type 名稱（EPS、GrossProfit、OperatingIncome、IncomeAfterTaxes、Equity、Liabilities、TotalAssets）需實測確認，名稱寫在 engine/scoring/indicators.py 的 METRIC_KEYS | 已解決（2026-11-09）：回補後評分拆解的基本面指標皆有值 |
 | 12 | 免費模式市值 | 已處理：公司資料實收資本額 ÷ 面額 = 股數，每日 × 收盤價更新市值 |
 | 13 | 消息面 AI 判讀在 GitHub Actions 上連不到本機 Ollama。選項：(a) 設 `AI_PROVIDER=claude` 並加 `ANTHROPIC_API_KEY` Secret；(b) 在自己電腦用 Ollama 補跑 `python -m engine.cli news`（之後再跑 `filters` 更新排除名單）；(c) 維持關鍵字判讀 | 已決定（2026-11-08）：先用關鍵字判讀，排程預設 `AI_PROVIDER=rules`；日後要換 AI 只需設定 GitHub Variables／Secrets，不需改程式 |
 | 14 | 法說會日期沒有證交所／櫃買 OpenAPI，公開資訊觀測站需表單查詢 | 先由網站手動登錄（第 9 階段），events.source = manual |
