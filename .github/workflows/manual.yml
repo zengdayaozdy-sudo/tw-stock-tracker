@@ -50,6 +50,7 @@ jobs:
         run: |
           case "$CMD" in
             probe|companies|seed-groups|plan) python -m engine.cli "$CMD" ;;
+            probe-mops)       python -m engine.cli probe-mops $ARGS ;;
             watch-add)    python -m engine.cli watch add $ARGS ;;
             watch-remove) python -m engine.cli watch remove $ARGS ;;
             watch-list)   python -m engine.cli watch list ;;
