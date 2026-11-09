@@ -13,25 +13,34 @@ weights:
 # 各面向內指標權重；同一面向內加總需為 1
 indicators:
   fundamental:
-    revenue_growth: 0.30        # 月營收年增率、連續成長、創新高（權重最高）
-    eps_growth: 0.15
-    margin_trend: 0.15
-    roe: 0.10
-    valuation_position: 0.15    # 本益比、淨值比相對歷史位置
-    balance_sheet: 0.10         # 負債比、自由現金流
+    revenue_growth: 0.22        # 月營收年增率、連續成長、創新高（權重最高）
+    revenue_acceleration: 0.10  # 近 3 月年增率 − 近 12 月年增率（分析師上修的免費替代）
+    eps_growth: 0.08
+    earnings_surprise: 0.08     # 標準化未預期盈餘（SUE）
+    margin_trend: 0.10
+    roe: 0.07
+    valuation_position: 0.08    # 本益比、淨值比相對歷史位置
+    peg: 0.05                   # 本益比 ÷ 近四季 EPS 年增率
+    order_backlog: 0.07         # 存貨天數年變化＋合約負債年增率
+    balance_sheet: 0.05         # 負債比
     dividend: 0.05              # 只計入中長線
+    analyst_revision: 0.05      # 受 feature flag（analyst_estimates）控制，需付費資料源
   technical:
-    ma_alignment: 0.35
-    momentum: 0.25
-    volume_ratio: 0.20
-    breakout: 0.20
+    ma_alignment: 0.30
+    momentum: 0.20
+    volume_ratio: 0.15
+    breakout: 0.15
+    relative_strength: 0.20     # 近半年（排除最近一個月）相對加權指數報酬
   chips:
-    foreign_net: 0.20
-    trust_net: 0.20
-    foreign_holding_change: 0.10
-    margin: 0.15                # 融資大增反向扣分
-    major_holders: 0.15
-    broker_branches: 0.20       # 受 feature flag 控制；停用時平均分給其他籌碼指標
+    foreign_net: 0.17
+    trust_net: 0.17
+    foreign_holding_change: 0.08
+    trust_holding: 0.08         # 投信近 60 日累計買超佔股本
+    margin: 0.10                # 融資大增反向扣分
+    securities_lending: 0.10    # 借券賣出餘額大增反向扣分
+    major_holders: 0.10
+    pledge: 0.05                # 董監質押比 30% 以上扣分，以下為中性
+    broker_branches: 0.15       # 受 feature flag 控制；停用時平均分給其他籌碼指標
 
 # 只計入中長線的指標
 long_only_indicators:
@@ -88,3 +97,7 @@ params:
   chips_net_days: 5
   holding_change_days: 20
   margin_change_days: 5
+  rs_lookback_days: 120             # 相對強弱：約半年
+  rs_skip_days: 20                  # 排除最近一個月
+  trust_holding_days: 60            # 投信累計買超天數
+  sbl_change_days: 5                # 借券賣出餘額變化天數

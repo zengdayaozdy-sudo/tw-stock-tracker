@@ -25,6 +25,9 @@ METRIC_KEYS = {
     "equity": ("Equity", "EquityAttributableToOwnersOfParent_per", "TotalEquity"),
     "liabilities": ("Liabilities", "TotalLiabilities"),
     "assets": ("TotalAssets",),
+    "inventories": ("Inventories",),
+    "cogs": ("CostOfGoodsSold", "OperatingCosts"),
+    "contract_liabilities": ("ContractLiabilitiesCurrent", "ContractLiabilities", "CurrentContractLiabilities"),
 }
 
 
@@ -74,9 +77,21 @@ def macd_hist(close: pd.Series, fast: int, slow: int, signal: int) -> pd.Series:
     return (hist / close * 100).where(close.expanding().count() >= slow)
 
 
-def technical(prices: pd.DataFrame, cfg: dict) -> dict[str, Indicator]:
+def relative_strength(close: pd.Series, benchmark: pd.Series | None, lookback: int, skip: int) -> pd.Series:
+    """中期相對強弱：近 lookback 個交易日（排除最近 skip 日）報酬減去大盤同期報酬。
+
+    排除最近一個月是動能研究的慣例（最近一個月常有短期反轉）。沒有大盤資料時只用自身報酬。
+    """
+    own = close.shift(skip) / close.shift(skip + lookback) - 1
+    if benchmark is None or benchmark.empty:
+        return own
+    b = benchmark.sort_index().reindex(close.index.union(benchmark.index)).ffill().reindex(close.index)
+    return own - (b.shift(skip) / b.shift(skip + lookback) - 1)
+
+
+def technical(prices: pd.DataFrame, cfg: dict, benchmark: pd.Series | None = None) -> dict[str, Indicator]:
     if prices.empty:
-        return {k: _empty(DAILY) for k in ("ma_alignment", "momentum", "volume_ratio", "breakout")}
+        return {k: _empty(DAILY) for k in ("ma_alignment", "momentum", "volume_ratio", "breakout", "relative_strength")}
     p = prices.sort_index()
     close, high, low = p["close"], p["high"].fillna(p["close"]), p["low"].fillna(p["close"])
     volume = p["volume"].fillna(0)
@@ -111,15 +126,30 @@ def technical(prices: pd.DataFrame, cfg: dict) -> dict[str, Indicator]:
         "momentum": Indicator(momentum, DAILY, {"kind": kind}),
         "volume_ratio": Indicator(volume_signal, DAILY),
         "breakout": Indicator(breakout, DAILY),
+        "relative_strength": Indicator(
+            relative_strength(close, benchmark, params.get("rs_lookback_days", 120), params.get("rs_skip_days", 20)),
+            DAILY, {"vs": "加權指數" if benchmark is not None and not benchmark.empty else "自身"}),
     }
 
 
 # ---------- 籌碼面 ----------
 
-def chips(chips_df: pd.DataFrame, prices: pd.DataFrame, cfg: dict) -> dict[str, Indicator]:
-    keys = ("foreign_net", "trust_net", "foreign_holding_change", "margin", "major_holders", "broker_branches")
+def pledge_value(pct: float) -> float:
+    """董監質押比換成 0–0.5：30% 以下視為正常（中性 50 分），超過後逐步扣分，80% 以上 0 分。"""
+    return 0.5 if pct < 30 else max(0.0, 0.5 - (pct - 30) / 100)
+
+
+def chips(chips_df: pd.DataFrame, prices: pd.DataFrame, cfg: dict, shares: float | None = None,
+          pledge: tuple[date, float] | None = None) -> dict[str, Indicator]:
+    keys = ("foreign_net", "trust_net", "foreign_holding_change", "margin", "major_holders", "broker_branches",
+            "trust_holding", "securities_lending")
+    pledge_ind = _empty(QUARTERLY)
+    if pledge and pledge[0] is not None and pledge[1] is not None:
+        idx = pd.DatetimeIndex([pd.Timestamp(pledge[0])])
+        pledge_ind = Indicator(pd.Series([pledge_value(float(pledge[1]))], index=idx), QUARTERLY,
+                               {"pct": float(pledge[1])})
     if prices.empty or chips_df.empty:
-        return {k: _empty(DAILY) for k in keys}
+        return {**{k: _empty(DAILY) for k in keys}, "pledge": pledge_ind}
     params = cfg["params"]
     c = chips_df.sort_index().reindex(prices.index)
     avg_volume = prices["volume"].rolling(20, min_periods=10).mean()
@@ -135,7 +165,20 @@ def chips(chips_df: pd.DataFrame, prices: pd.DataFrame, cfg: dict) -> dict[str, 
     m = params["margin_change_days"]
     branches = c["branches"].map(lambda b: (b or {}).get("concentration") if isinstance(b, dict) else np.nan)
 
+    # 投信近 N 日累計買超佔股本（%）：投信持股比率的近似
+    trust_days = params.get("trust_holding_days", 60)
+    trust_cum = c["trust_net"].fillna(0).rolling(trust_days, min_periods=int(trust_days * 0.6)).sum()
+    trust_holding = (trust_cum / shares * 100) if shares else pd.Series(np.nan, index=c.index)
+    # 借券賣出餘額近 N 日增減，相對 20 日均量
+    sbl_col = c["sbl_balance"] if "sbl_balance" in c else pd.Series(np.nan, index=c.index)
+    sbl = pd.to_numeric(sbl_col, errors="coerce").ffill(limit=3)
+    k = params.get("sbl_change_days", 5)
+    sbl_change = ((sbl - sbl.shift(k)) / avg_volume).where(avg_volume > 0)
+
     return {
+        "trust_holding": Indicator(trust_holding, DAILY),
+        "securities_lending": Indicator(sbl_change, DAILY),
+        "pledge": pledge_ind,
         "foreign_net": Indicator(net("foreign_net"), DAILY),
         "trust_net": Indicator(net("trust_net"), DAILY),
         "foreign_holding_change": Indicator(holding - holding.shift(params["holding_change_days"]), DAILY),
@@ -177,9 +220,13 @@ def _growth(cur: float | None, prev: float | None) -> float | None:
 
 def fundamental(financials: pd.DataFrame, valuations: pd.DataFrame, as_of: date, cfg: dict) -> dict[str, Indicator]:
     out: dict[str, Indicator] = {
-        k: _empty(QUARTERLY) for k in ("eps_growth", "margin_trend", "roe", "balance_sheet")
+        k: _empty(QUARTERLY) for k in ("eps_growth", "margin_trend", "roe", "balance_sheet",
+                                       "earnings_surprise", "order_backlog")
     }
     out["revenue_growth"] = _empty(MONTHLY)
+    out["revenue_acceleration"] = _empty(MONTHLY)
+    out["analyst_revision"] = _empty(MONTHLY)  # 需付費資料源，目前沒有資料
+    ttm_growth = pd.Series(dtype=float, index=pd.DatetimeIndex([]))
 
     fin = financials
     if not fin.empty:
@@ -212,6 +259,13 @@ def fundamental(financials: pd.DataFrame, valuations: pd.DataFrame, as_of: date,
             _by_publish(yoy3, pub), MONTHLY,
             {"streak": streak, "new_high": new_high, "latest_period": periods[-1] if periods else None},
         )
+        # 營收成長加速：近 3 個月平均年增率減去近 12 個月平均年增率（拿不到分析師預估時最接近「上修」的訊號）
+        accel = {}
+        for i, (p, _) in enumerate(yoy_list):
+            last12 = [v for _, v in yoy_list[max(0, i - 11): i + 1]]
+            if len(last12) >= 9 and p in yoy3:
+                accel[p] = yoy3[p] - float(np.mean(last12))
+        out["revenue_acceleration"] = Indicator(_by_publish(accel, pub), MONTHLY)
 
     # 季報
     quarters = fin[fin["period_type"] == "quarter"] if not fin.empty else fin
@@ -240,6 +294,51 @@ def fundamental(financials: pd.DataFrame, valuations: pd.DataFrame, as_of: date,
             if len(last4) == 4 and None not in incomes and get["equity"][p]:
                 roe[p] = sum(incomes) / get["equity"][p] * 100
             debt[p] = ratio("liabilities", "assets", p)
+        # 財報驚喜（標準化未預期盈餘 SUE）：EPS 年增差額相對過去 8 季差額的波動
+        diff = {p: (get["eps"][p] - get["eps"][_shift_period(p, -1)])
+                for p in periods if get["eps"][p] is not None and get["eps"].get(_shift_period(p, -1)) is not None}
+        dps = sorted(diff)
+        sue = {}
+        for i, p in enumerate(dps):
+            past = [diff[x] for x in dps[max(0, i - 8): i]]
+            sd = float(np.std(past, ddof=1)) if len(past) >= 4 else 0.0
+            if sd > 0:
+                sue[p] = diff[p] / sd
+        out["earnings_surprise"] = Indicator(_by_publish(sue, pub), QUARTERLY)
+
+        # 近四季 EPS 年增率（本益成長比用）
+        def prev_q(p: str, n: int) -> str:
+            y, qn = int(p[:4]), int(p[-1])
+            idx = y * 4 + qn - 1 - n
+            return f"{idx // 4}Q{idx % 4 + 1}"
+
+        ttm = {}
+        for p in periods:
+            vals = [get["eps"].get(prev_q(p, n)) for n in range(4)]
+            if None not in vals:
+                ttm[p] = sum(vals)
+        growth = {p: (ttm[p] / ttm[prev_q(p, 4)] - 1) for p in ttm
+                  if prev_q(p, 4) in ttm and ttm[prev_q(p, 4)] > 0}
+        ttm_growth = _by_publish(growth, pub)
+
+        # 存貨天數年變化（越短越好）＋合約負債年增率（訂單領先指標，有揭露才計入）
+        backlog = {}
+        for p in periods:
+            py = _shift_period(p, -1)
+            if py not in q:
+                continue
+            parts = []
+            inv, cogs = get["inventories"][p], get["cogs"][p]
+            inv_y, cogs_y = get["inventories"].get(py), get["cogs"].get(py)
+            if inv and cogs and inv_y and cogs_y and cogs > 0 and cogs_y > 0:
+                parts.append(-((inv / cogs) / (inv_y / cogs_y) - 1))
+            cl, cl_y = get["contract_liabilities"][p], get["contract_liabilities"].get(py)
+            if cl is not None and cl_y and cl_y > 0:
+                parts.append(max(-1.0, min(1.0, cl / cl_y - 1)))
+            if parts:
+                backlog[p] = float(np.mean(parts))
+        out["order_backlog"] = Indicator(_by_publish(backlog, pub), QUARTERLY)
+
         out["eps_growth"] = Indicator(_by_publish(eps_growth, pub), QUARTERLY)
         out["margin_trend"] = Indicator(_by_publish(margin_trend, pub), QUARTERLY)
         out["roe"] = Indicator(_by_publish(roe, pub), QUARTERLY)
@@ -249,6 +348,7 @@ def fundamental(financials: pd.DataFrame, valuations: pd.DataFrame, as_of: date,
     if valuations.empty:
         out["valuation_position"] = _empty(DAILY)
         out["dividend"] = _empty(DAILY)
+        out["peg"] = _empty(DAILY)
     else:
         v = valuations.sort_index()
         pe = v["pe"].where(v["pe"] > 0)
@@ -257,13 +357,19 @@ def fundamental(financials: pd.DataFrame, valuations: pd.DataFrame, as_of: date,
             val = Indicator(v["pb"].where(v["pb"] > 0), DAILY, {"basis": "股價淨值比"})
         out["valuation_position"] = val
         out["dividend"] = Indicator(v["dividend_yield"], DAILY)
+        # 本益成長比：本益比 ÷ 近四季 EPS 年增率（%）；成長為負或太小時不計
+        if ttm_growth.empty:
+            out["peg"] = _empty(DAILY)
+        else:
+            g = ttm_growth.reindex(pe.index.union(ttm_growth.index)).ffill().reindex(pe.index)
+            out["peg"] = Indicator((pe / (g * 100)).where(g > 0.02), DAILY)
     return out
 
 
 def compute_all(stock: StockFrames, as_of: date, cfg: dict) -> dict[str, Indicator]:
     result: dict[str, Indicator] = {}
-    result.update(technical(stock.prices, cfg))
-    result.update(chips(stock.chips, stock.prices, cfg))
+    result.update(technical(stock.prices, cfg, stock.benchmark))
+    result.update(chips(stock.chips, stock.prices, cfg, stock.shares, stock.pledge))
     result.update(fundamental(stock.financials, stock.valuations, as_of, cfg))
     return result
 
@@ -277,3 +383,6 @@ class StockFrames:
     financials: pd.DataFrame   # period_type period published_date metrics
     industry: str | None = None
     market_cap: float | None = None
+    benchmark: pd.Series | None = None          # 加權指數收盤（相對強弱用）
+    shares: float | None = None                 # 發行股數（投信持股比用）
+    pledge: tuple[date, float] | None = None    # （資料日期, 董監質押比 %）

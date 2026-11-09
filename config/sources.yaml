@@ -33,6 +33,8 @@ finmind:
     dividend_result: TaiwanStockDividendResult          # 除權息前後參考價
     split_price: TaiwanStockSplitPrice                  # 股票分割
     capital_reduction: TaiwanStockCapitalReductionReferencePrice  # 減資
+    # 2026-11-09 實測免費：借券賣出餘額歷史（SBLShortSalesCurrentDayBalance）
+    short_sale_balances: TaiwanDailyShortSaleBalances
 
 # 每日排程自動回補新加入的自選股：依本小時剩餘 FinMind 額度決定檔數（每檔約 11 次呼叫）
 backfill_new:
@@ -53,6 +55,10 @@ twse:
     attention: https://openapi.twse.com.tw/v1/announcement/notice
     institutional: https://www.twse.com.tw/rwd/zh/fund/T86?date={date}&selectType=ALLBUT0999&response=json
     taiex_history: https://www.twse.com.tw/rwd/zh/TAIEX/MI_5MINS_HIST?date={date}&response=json
+    # 2026-11-09 實測：信用額度總量管制餘額表，當天更新；「當日餘額」欄為借券賣出餘額
+    sbl_site: https://www.twse.com.tw/rwd/zh/marginTrading/TWT93U?date={date}&response=json
+    # 2026-11-09 實測：董監質權設定占持有股數彙總表，依百分比級距列出公司（約每月更新）
+    pledge: https://openapi.twse.com.tw/v1/opendata/t187ap09_L
     # 第 4 階段（2026-11-08 實測）
     full_delivery: https://openapi.twse.com.tw/v1/exchangeReport/TWT85U      # 變更交易（全額交割）
     announcements: https://openapi.twse.com.tw/v1/opendata/t187ap04_L        # 每日重大訊息
@@ -75,6 +81,9 @@ tpex:
     attention: https://www.tpex.org.tw/openapi/v1/tpex_trading_warning_information
     trading_mode: https://www.tpex.org.tw/openapi/v1/tpex_cmode               # 變更交易（全額交割）、管理股票
     announcements: https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap04_O
+    # 2026-11-09 實測：融券借券賣出餘額（SecuritiesBorrowingBalanceOfTheMarketDay）
+    sbl: https://www.tpex.org.tw/openapi/v1/tpex_margin_sbl
+    pledge: https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap09_O
     ex_dividend: https://www.tpex.org.tw/openapi/v1/tpex_exright_prepost
     shareholder_meetings: https://www.tpex.org.tw/openapi/v1/t187ap41_O
 

@@ -118,7 +118,8 @@ type Indicator = {
   label: string;
   dimension: string;
   raw: number | null;
-  score: number;
+  score: number | null;
+  locked?: boolean;
   weight: number;
   dimension_weight: number;
   contribution: number;
@@ -157,7 +158,18 @@ export function ScoreBreakdown({ score }: { score: ScoreRow & { date?: string } 
             </tr>,
             ...items
               .filter((i) => i.dimension === dim)
-              .map((i) => (
+              .map((i) =>
+                i.locked ? (
+                  <tr key={i.key} className="locked-row">
+                    <td>
+                      <span className="lock">{i.label}</span>
+                    </td>
+                    <td colSpan={6} className="small faint">
+                      未解鎖，不計分（權重已分給同面向其他指標）
+                    </td>
+                    <td className="small muted">{(i.note ?? "").replace(/^未解鎖：/, "")}</td>
+                  </tr>
+                ) : (
                 <tr key={i.key}>
                   <td>{i.label}</td>
                   <td className="n">{i.raw === null ? "—" : num(i.raw, Math.abs(i.raw) < 10 ? 3 : 1)}</td>
@@ -165,7 +177,7 @@ export function ScoreBreakdown({ score }: { score: ScoreRow & { date?: string } 
                   <td className="n">{num(i.peer_percentile, 0)}</td>
                   <td>
                     <span className="bar">
-                      <span style={{ width: `${Math.max(0, Math.min(100, i.score))}%` }} />
+                      <span style={{ width: `${Math.max(0, Math.min(100, i.score ?? 0))}%` }} />
                     </span>{" "}
                     <span className="num small">{num(i.score, 0)}</span>
                   </td>
@@ -173,7 +185,8 @@ export function ScoreBreakdown({ score }: { score: ScoreRow & { date?: string } 
                   <td className="n">{num(i.contribution, 1)}</td>
                   <td className="small muted">{i.note ?? ""}</td>
                 </tr>
-              )),
+                ),
+              ),
           ])}
         </tbody>
       </table>

@@ -554,3 +554,7 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
 .data-dates span { white-space: nowrap; }
 .data-dates b { font-weight: 500; color: var(--muted); font-family: var(--mono); margin-left: 4px; }
 .data-dates b.pending { color: var(--warn); font-family: var(--sans); }
+
+/* 評分拆解：未解鎖指標 */
+.locked-row td { background: color-mix(in srgb, var(--line) 25%, transparent); }
+.locked-row .lock { color: var(--muted); }

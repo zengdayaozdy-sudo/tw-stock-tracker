@@ -25,6 +25,11 @@ DIMENSION_LABELS = {"fundamental": "基本面", "technical": "技術面", "chips
 # 指標：(面向, 方向 +1 越高越好／-1 越低越好, 計分方式, 中文名稱)
 SPEC: dict[str, tuple[str, int, str, str]] = {
     "revenue_growth": ("fundamental", 1, "revenue", "月營收成長"),
+    "revenue_acceleration": ("fundamental", 1, "percentile", "營收成長加速"),
+    "earnings_surprise": ("fundamental", 1, "percentile", "財報優於過去趨勢"),
+    "peg": ("fundamental", -1, "percentile", "本益成長比"),
+    "order_backlog": ("fundamental", 1, "percentile", "存貨天數與合約負債"),
+    "analyst_revision": ("fundamental", 1, "percentile", "分析師 EPS 預估上修"),
     "eps_growth": ("fundamental", 1, "percentile", "EPS 年增率"),
     "margin_trend": ("fundamental", 1, "percentile", "毛利率與營益率改善"),
     "roe": ("fundamental", 1, "percentile", "ROE"),
@@ -35,13 +40,25 @@ SPEC: dict[str, tuple[str, int, str, str]] = {
     "momentum": ("technical", 1, "percentile", "動能"),
     "volume_ratio": ("technical", 1, "percentile", "量能"),
     "breakout": ("technical", 1, "percentile", "突破 20 日區間"),
+    "relative_strength": ("technical", 1, "percentile", "半年相對大盤強弱"),
     "foreign_net": ("chips", 1, "percentile", "外資買超"),
     "trust_net": ("chips", 1, "percentile", "投信買超"),
     "foreign_holding_change": ("chips", 1, "percentile", "外資持股增加"),
     "margin": ("chips", -1, "percentile", "融資減少"),
     "major_holders": ("chips", 1, "percentile", "大戶持股增加"),
     "broker_branches": ("chips", 1, "percentile", "主力分點集中"),
+    "trust_holding": ("chips", 1, "percentile", "投信持股佔股本"),
+    "securities_lending": ("chips", -1, "percentile", "借券賣出減少"),
+    "pledge": ("chips", 1, "absolute", "董監質押比"),
 }
+
+# 需要功能開關的指標：未解鎖時權重平均分給同面向其他指標，評分拆解以鎖頭列出
+INDICATOR_FEATURES = {"broker_branches": "broker_branches", "analyst_revision": "analyst_estimates"}
+
+
+def locked_indicators(settings: Settings, dimension: str) -> list[str]:
+    keys = settings.scoring["indicators"][dimension]
+    return [k for k in keys if k in INDICATOR_FEATURES and not settings.enabled(INDICATOR_FEATURES[k])]
 
 
 @dataclass
@@ -81,13 +98,18 @@ def indicator_weights(settings: Settings, horizon: str, dimension: str, small_ca
             others = sum(v for k, v in w.items() if k != key)
             scale = (1 - target) / others if others else 0
             w = {k: (target if k == key else v * scale) for k, v in w.items()}
-    if dimension == "chips" and not settings.enabled("broker_branches") and "broker_branches" in w:
-        freed = w.pop("broker_branches")  # 停用時平均分給其他籌碼指標
-        w = {k: v + freed / len(w) for k, v in w.items()}
+    for key in locked_indicators(settings, dimension):
+        if key in w:
+            freed = w.pop(key)  # 未解鎖時平均分給同面向其他指標
+            w = {k: v + freed / len(w) for k, v in w.items()}
     if dimension == "chips" and small_cap and "trust_net" in w:
         w["trust_net"] *= cfg["small_cap"]["trust_weight_boost"]
     total = sum(w.values())
     return {k: v / total for k, v in w.items()}
+
+
+def horizon_skips(cfg: dict, horizon: str, key: str) -> bool:
+    return horizon == "short" and key in cfg.get("long_only_indicators", [])
 
 
 # ---------- 百分位 ----------
@@ -246,6 +268,10 @@ def score_universe(settings: Settings, stocks: dict[str, StockFrames],
                         note.append("中小型股，投信權重加成")
                     if key == "valuation_position" and not e.get("missing"):
                         note.append(f"以{indicators[sid][key].extras.get('basis', '本益比')}計")
+                    if key == "pledge" and not e.get("missing"):
+                        note.append(f"質押 {indicators[sid][key].extras.get('pct', 0):.1f}%")
+                    if key == "relative_strength" and not e.get("missing"):
+                        note.append(f"相對{indicators[sid][key].extras.get('vs', '加權指數')}，不含最近一個月")
                     items.append({
                         "key": key,
                         "label": SPEC[key][3],
@@ -259,6 +285,15 @@ def score_universe(settings: Settings, stocks: dict[str, StockFrames],
                         "contribution": _clean(dim_weight * w * e["score"]),
                         **({"streak": e["streak"], "new_high": _clean(e["new_high"])} if "streak" in e else {}),
                         "note": "；".join(note) or None,
+                    })
+                for key in locked_indicators(settings, dim):
+                    if horizon_skips(cfg, h, key):
+                        continue
+                    items.append({
+                        "key": key, "label": SPEC[key][3], "dimension": dim, "raw": None,
+                        "self_percentile": None, "peer_percentile": None, "score": None, "weight": 0,
+                        "dimension_weight": dim_weight, "contribution": 0, "locked": True,
+                        "note": "未解鎖：" + settings.unlock_hint(INDICATOR_FEATURES[key]),
                     })
                 dims[dim] = round(dim_score, 2)
             total = round(sum(cfg["weights"][h][d] * dims[d] for d in DIMENSIONS), 2)
@@ -275,7 +310,8 @@ def score_universe(settings: Settings, stocks: dict[str, StockFrames],
 
 def reasons(breakdown: dict, n: int = 3) -> list[str]:
     """高分理由：對總分貢獻高於中性分最多的指標。"""
-    items = [i for i in breakdown.get("indicators", []) if not (i.get("note") or "").startswith("資料缺漏")]
+    items = [i for i in breakdown.get("indicators", [])
+             if not i.get("locked") and i.get("score") is not None and not (i.get("note") or "").startswith("資料缺漏")]
     ranked = sorted(items, key=lambda i: i["dimension_weight"] * i["weight"] * (i["score"] - 50), reverse=True)
     out = []
     for i in ranked[:n]:

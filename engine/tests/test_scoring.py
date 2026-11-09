@@ -109,7 +109,9 @@ def test_breakdown_adds_up(results):
     for r in results.values():
         items = r.breakdown["indicators"]
         assert sum(i["contribution"] for i in items) == pytest.approx(r.total, abs=0.05)
-        assert all(0 <= i["score"] <= 100 for i in items)
+        assert all(0 <= i["score"] <= 100 for i in items if not i.get("locked"))
+        locked = {i["key"] for i in items if i.get("locked")}
+        assert locked == {"broker_branches", "analyst_revision"}  # 免費模式以鎖頭列出、權重為 0
         for d in ("fundamental", "technical", "chips"):
             assert sum(i["weight"] for i in items if i["dimension"] == d) == pytest.approx(1, abs=1e-3)
 

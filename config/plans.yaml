@@ -10,6 +10,11 @@ features:
   broker_branches: 券商分點籌碼
   finmind_realtime: FinMind 即時報價（盤中停損）
   full_backtest: 全市場多年回測
+  analyst_estimates: 分析師 EPS 預估上修下修與目標價
+
+# 解鎖方式說明（沒有列出的功能顯示「升級 FinMind 方案後可用」）
+unlock_hints:
+  analyst_estimates: 需另接付費資料源（例如 CMoney、FactSet），FinMind 沒有分析師預估資料
 
 plans:
   free:

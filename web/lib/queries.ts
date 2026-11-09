@@ -8,7 +8,7 @@ export type RuntimeConfig = {
   plan_label: string;
   universe: string;
   watchlist_limit: number | null;
-  features: Record<string, { label: string; enabled: boolean }>;
+  features: Record<string, { label: string; enabled: boolean; hint?: string }>;
   risk: {
     costs: { commission_rate: number; commission_discount?: number; min_commission: number; tax_rate: number };
     stop_loss: { method: string; percent: number; bearish_market_percent: number; ma60_buffer?: number; max_percent?: number };

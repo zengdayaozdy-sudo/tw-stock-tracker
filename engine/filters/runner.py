@@ -9,7 +9,7 @@ from typing import Any
 import pandas as pd
 
 from engine.config import TZ, Settings
-from engine.filters.events import TradingCalendar, event_flags, statutory_events
+from engine.filters.events import TradingCalendar, event_flags, index_review_events, statutory_events
 from engine.filters.groups import group_strength, weak_group_flags
 from engine.filters.liquidity import AVG_DAYS, liquidity_flags
 from engine.filters.market_light import MarketLight, compute_light
@@ -228,7 +228,8 @@ def compute_event_flags(settings: Settings, repo: Repository, ids: list[str], as
     cfg = settings.filters["events"]
     stored = repo.events_between(ids, as_of - timedelta(days=15), as_of + timedelta(days=20))
     implied = statutory_events(ids, repo.financial_periods(ids, as_of), as_of)
-    return event_flags(stored + implied, as_of, cal, cfg)
+    reviews = index_review_events(ids, repo.market_caps(ids), cfg, cal)
+    return event_flags(stored + implied + reviews, as_of, cal, cfg)
 
 
 # ---------- 步驟 6 整合 ----------

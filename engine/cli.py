@@ -672,7 +672,8 @@ def runtime_config(settings) -> dict:
         "plan_label": settings.plan.label,
         "universe": settings.plan.universe,
         "watchlist_limit": settings.plan.watchlist_limit,
-        "features": {k: {"label": v, "enabled": settings.enabled(k)} for k, v in settings.all_features.items()},
+        "features": {k: {"label": v, "enabled": settings.enabled(k), "hint": settings.unlock_hint(k)}
+                     for k, v in settings.all_features.items()},
         "risk": {k: settings.risk[k] for k in ("costs", "stop_loss", "take_profit", "exit", "position")},
         "finmind_hourly_budget": int(fm["hourly_limit"][settings.plan.name] * fm.get("safety_margin", 0.9)),
         "min_history_days": settings.scoring["min_history_days"],

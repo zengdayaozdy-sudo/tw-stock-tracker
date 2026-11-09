@@ -149,3 +149,35 @@ def test_industry_and_shares():
     assert industry_name("99") == "99"
     assert shares_outstanding("77231817420", "新台幣                 10.0000元") == 7_723_181_742
     assert shares_outstanding("1000", "新台幣 1.0000元") == 1000
+
+
+def test_securities_lending_and_pledge_real_format():
+    payloads = {
+        # 2026-11-09 probe 實際格式
+        "TWT93U": {"stat": "OK", "date": "20261109",
+                   "fields": ["代號", "名稱", "前日餘額", "賣出", "買進", "現券", "今日餘額", "次一營業日限額",
+                              "前日餘額", "當日賣出", "當日還券", "當日調整", "當日餘額", "次一營業日可限額", "備註"],
+                   "data": [["00400A", "ETF", "0", "6,000", "0", "0", "6,000", "1", "1", "0", "0", "0", "61,808,000",
+                             "1", " "],
+                            ["2330", "台積電", "9,000", "0", "0", "0", "13,000", "1", "16,187,514", "419,000", "504,000",
+                             "0", "16,102,514", "1", " "]]},
+        "tpex_margin_sbl": [
+            {"Date": "1151109", "SecuritiesCompanyCode": "6488", "SecuritiesBorrowingBalanceOfTheMarketDay": "1566000"},
+            {"Date": "1151106", "SecuritiesCompanyCode": "5347", "SecuritiesBorrowingBalanceOfTheMarketDay": "99"}],
+        "t187ap09_L": [{"出表日期": "1150819", "百分比": "90 以上",
+                        "公司名稱": "3040      遠見  99.36\r\n2530      華建  92.69\r\n"}],
+        "mopsfin_t187ap09_O": [{"Date": "1150819", "Percent": "90 以上", "CompanyName": "4502      健信  99.80\r\n"}],
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        for key, payload in payloads.items():
+            if key in str(request.url):
+                return httpx.Response(200, json=payload)
+        return httpx.Response(404)
+
+    ex = ExchangeClient(load_settings("free"), HttpClient(transport=httpx.MockTransport(handler), max_retries=0))
+    rows = {r["stock_id"]: r for r in ex.securities_lending(D2)}
+    assert rows == {"2330": {"stock_id": "2330", "date": D2, "sbl_balance": 16_102_514},
+                    "6488": {"stock_id": "6488", "date": D2, "sbl_balance": 1_566_000}}  # 5347 日期不是當天
+    ratios, as_of = ex.pledge_ratios()
+    assert ratios == {"3040": 99.36, "2530": 92.69, "4502": 99.8} and as_of == date(2026, 8, 19)

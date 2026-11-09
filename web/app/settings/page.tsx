@@ -69,7 +69,7 @@ export default async function SettingsPage() {
               {Object.entries(config.features).map(([key, f]) => (
                 <tr key={key}>
                   <td>{f.enabled ? f.label : <span className="lock">{f.label}</span>}</td>
-                  <td>{f.enabled ? <span className="tag ok">已啟用</span> : <span className="faint small">升級 FinMind 方案後可用</span>}</td>
+                  <td>{f.enabled ? <span className="tag ok">已啟用</span> : <span className="faint small">{f.hint ?? "升級 FinMind 方案後可用"}</span>}</td>
                 </tr>
               ))}
             </tbody>

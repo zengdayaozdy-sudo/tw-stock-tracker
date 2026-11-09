@@ -71,7 +71,9 @@ def test_runtime_config_for_website():
 
     free = runtime_config(load_settings("free"))
     assert free["plan"] == "free" and free["watchlist_limit"] == 100
-    assert free["features"]["broker_branches"] == {"label": "券商分點籌碼", "enabled": False}
+    assert free["features"]["broker_branches"] == {"label": "券商分點籌碼", "enabled": False,
+                                                   "hint": "升級 FinMind 方案後可用"}
+    assert "付費資料源" in free["features"]["analyst_estimates"]["hint"]
     assert free["risk"]["costs"]["commission_rate"] == 0.001425
     assert free["finmind_hourly_budget"] == 540
     pro = runtime_config(load_settings("pro"))

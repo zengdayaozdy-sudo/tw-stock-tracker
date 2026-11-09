@@ -70,6 +70,25 @@ def statutory_events(ids: list[str], latest: dict[tuple[str, str], str], as_of: 
     return out
 
 
+def index_review_events(ids: list[str], caps: dict[str, float | None], cfg: dict[str, Any],
+                        cal: TradingCalendar) -> list[dict]:
+    """MSCI 等指數季度調整：公布日與換股日（生效日前一個交易日收盤）。只套用在市值達門檻的股票。"""
+    from datetime import date as _date
+
+    min_cap = cfg.get("index_review_min_market_cap") or 0
+    large = [s for s in ids if (caps.get(s) or 0) >= min_cap]
+    out: list[dict] = []
+    for r in cfg.get("index_reviews") or []:
+        announce = r["announce"] if isinstance(r["announce"], _date) else _date.fromisoformat(str(r["announce"]))
+        effective = r["effective"] if isinstance(r["effective"], _date) else _date.fromisoformat(str(r["effective"]))
+        rebalance = cal.add(effective, -1)
+        for sid in large:
+            out.append({"stock_id": sid, "date": announce, "event_type": "指數調整公布", "note": r["name"]})
+            out.append({"stock_id": sid, "date": rebalance, "event_type": "指數調整換股",
+                        "note": f"{r['name']}（收盤換股）"})
+    return out
+
+
 def event_flags(events: list[dict], as_of: date, cal: TradingCalendar, cfg: dict[str, Any]) -> list[dict]:
     before, after = cfg["warn_days_before"], cfg["warn_days_after"]
     out: list[dict] = []

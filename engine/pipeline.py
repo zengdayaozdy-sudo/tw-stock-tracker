@@ -107,6 +107,21 @@ def fetch_daily(
     margin_check = check_chips([r for r in margin if r["date"] == trade_date], ids, "當日融資融券")
     result.quality.warnings.extend(margin_check.errors + margin_check.warnings)
 
+    # 借券賣出餘額（外資避險、放空的主要管道）；缺資料只列警告
+    try:
+        sbl = [r for r in exchange.securities_lending(trade_date) if r["stock_id"] in known]
+        result.counts["sbl"] = repo.upsert_chips(sbl)
+    except Exception as e:
+        result.quality.warnings.append(f"借券賣出餘額抓取失敗：{e}")
+
+    # 董監質押比（約每月更新一次的彙總表）
+    try:
+        ratios, as_of = exchange.pledge_ratios()
+        if as_of:
+            result.counts["pledge"] = repo.set_pledge_ratios({k: v for k, v in ratios.items() if k in known}, as_of)
+    except Exception as e:
+        result.quality.warnings.append(f"董監質押比抓取失敗：{e}")
+
     # 3. 交易狀態（處置、注意、全額交割）
     try:
         repo.set_status_flags(exchange.status_flags(trade_date))
@@ -118,6 +133,7 @@ def fetch_daily(
     before = finmind.quota.calls_this_hour
     result.counts["financials"] = refresh_financials(repo, finmind, ids, trade_date)
     result.counts["shareholding"] = refresh_shareholding(repo, finmind, ids, trade_date)
+    result.counts["sbl_history"] = refresh_sbl_history(repo, finmind, ids, trade_date)
     result.finmind_calls = finmind.quota.calls_this_hour - before
 
     # 5. 除權息、分割、減資參考價（只抓最近有除權息事件的股票）
@@ -224,12 +240,27 @@ def refresh_shareholding(repo: Repository, finmind: FinMindClient, ids: list[str
 
 
 # 每檔回補的 FinMind 呼叫數：股價、估值、法人、融資券、外資持股、月營收、損益表、資產負債表＋除權息／分割／減資
-BACKFILL_CALLS_PER_STOCK = 8 + len(fm.ADJUSTMENT_DATASETS)
+BACKFILL_CALLS_PER_STOCK = 9 + len(fm.ADJUSTMENT_DATASETS)  # 含借券賣出餘額
 
 
 def backfill_capacity(remaining_calls: int, cap: int, floor: int = 0) -> int:
     """依本小時剩餘額度決定這次回補幾檔，不讓排程卡在等下一個整點。"""
     return max(floor, min(cap, remaining_calls // BACKFILL_CALLS_PER_STOCK))
+
+
+SBL_MIN_DAYS = 30
+
+
+def refresh_sbl_history(repo: Repository, finmind: FinMindClient, ids: list[str], today: date) -> int:
+    """借券賣出餘額歷史不足的股票，從 FinMind 補一年（之後每天由交易所資料累積）。"""
+    have = repo.sbl_history_days(ids)
+    count = 0
+    for sid in ids:
+        if have.get(sid, 0) >= SBL_MIN_DAYS:
+            continue
+        rows = finmind.fetch("short_sale_balances", sid, today - timedelta(days=SHAREHOLDING_HISTORY_DAYS))
+        count += repo.upsert_chips(fm.parse_sbl(rows))
+    return count
 
 
 def backfill(repo: Repository, finmind: FinMindClient, ids: list[str], years: int, today: date) -> dict[str, int]:
@@ -245,6 +276,8 @@ def backfill(repo: Repository, finmind: FinMindClient, ids: list[str], years: in
         counts["margin"] += repo.upsert_chips(fm.parse_margin(finmind.fetch("margin", sid, start)))
         counts["shareholding"] = counts.get("shareholding", 0) + repo.upsert_chips(
             fm.parse_shareholding(finmind.fetch("shareholding", sid, start)))
+        counts["sbl"] = counts.get("sbl", 0) + repo.upsert_chips(
+            fm.parse_sbl(finmind.fetch("short_sale_balances", sid, start)))
         counts["financials"] += repo.upsert(
             "financials", fm.parse_month_revenue(finmind.fetch("month_revenue", sid, start))
         )

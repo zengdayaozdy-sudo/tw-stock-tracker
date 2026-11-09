@@ -13,7 +13,7 @@ from engine.scoring.model import ScoreResult
 
 PRICE_COLS = ["open", "high", "low", "close", "volume"]
 CHIP_COLS = ["foreign_net", "trust_net", "dealer_net", "foreign_holding_pct", "margin_balance",
-             "short_balance", "major_holder_pct", "branches"]
+             "short_balance", "major_holder_pct", "sbl_balance", "branches"]
 VALUATION_COLS = ["pe", "pb", "dividend_yield"]
 
 
@@ -55,8 +55,20 @@ def load_frames(repo: Repository, ids: list[str], as_of: date, lookback_years: i
         fin = pd.DataFrame(cur.fetchall(), columns=["stock_id", "period_type", "period", "published_date", "metrics"])
         fins = {sid: g.drop(columns="stock_id").reset_index(drop=True) for sid, g in fin.groupby("stock_id")}
 
-        cur.execute("SELECT stock_id, industry, market_cap FROM stocks WHERE stock_id = ANY(%s)", (ids,))
-        meta = {sid: (ind, float(cap) if cap is not None else None) for sid, ind, cap in cur.fetchall()}
+        cur.execute("SELECT stock_id, industry, market_cap, shares, pledge_date, pledge_ratio FROM stocks "
+                    "WHERE stock_id = ANY(%s)", (ids,))
+        meta, extra = {}, {}
+        for sid, ind, cap, shares, pdate, pratio in cur.fetchall():
+            meta[sid] = (ind, float(cap) if cap is not None else None)
+            extra[sid] = (float(shares) if shares else None,
+                          (pdate, float(pratio)) if pdate is not None and pratio is not None else None)
+
+        # 加權指數（相對強弱的比較基準）
+        cur.execute("SELECT date, value FROM market_series WHERE series = 'taiex' AND date BETWEEN %s AND %s "
+                    "ORDER BY date", (start, as_of))
+        bench_rows = cur.fetchall()
+    benchmark = pd.Series([float(v) for _, v in bench_rows],
+                          index=pd.DatetimeIndex([pd.Timestamp(d) for d, _ in bench_rows]), dtype=float)
 
     # 還原股價（除權息、分割、減資），只用 as_of 當天以前已發生的調整
     adjustments = repo.adjustments(ids)
@@ -77,6 +89,9 @@ def load_frames(repo: Repository, ids: list[str], as_of: date, lookback_years: i
             financials=fins.get(sid, empty_f),
             industry=meta.get(sid, (None, None))[0],
             market_cap=meta.get(sid, (None, None))[1],
+            benchmark=benchmark,
+            shares=extra.get(sid, (None, None))[0],
+            pledge=extra.get(sid, (None, None))[1],
         )
         for sid in ids
     }

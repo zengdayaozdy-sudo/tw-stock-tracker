@@ -249,6 +249,47 @@ class ExchangeClient:
                 )
         return out
 
+    # ---------- 借券賣出餘額 ----------
+    def securities_lending(self, trade_date: date) -> list[dict]:
+        """借券賣出餘額（股）。上市用證交所網站版（當天），上櫃用櫃買 OpenAPI；日期不是 trade_date 的不收。"""
+        out: list[dict] = []
+        payload = self.raw("twse", "sbl_site", date=trade_date.strftime("%Y%m%d"))
+        ymd = trade_date.strftime("%Y%m%d")
+        if isinstance(payload, dict) and payload.get("stat") == "OK" and str(payload.get("date")) == ymd:
+            fields = payload.get("fields") or []
+            if "當日餘額" in fields:
+                idx = fields.index("當日餘額")
+                for row in payload.get("data") or []:
+                    code = str(row[0]).strip()
+                    if _is_common_stock(code) and len(row) > idx:
+                        out.append({"stock_id": code, "date": trade_date, "sbl_balance": to_int(row[idx])})
+        for r in _rows(self.raw("tpex", "sbl")):
+            code = str(pick(r, "SecuritiesCompanyCode") or "").strip()
+            if not _is_common_stock(code) or parse_tw_date(pick(r, "Date")) != trade_date:
+                continue
+            out.append({"stock_id": code, "date": trade_date,
+                        "sbl_balance": to_int(pick(r, "SecuritiesBorrowingBalanceOfTheMarketDay"))})
+        return out
+
+    # ---------- 董監質押比 ----------
+    def pledge_ratios(self) -> tuple[dict[str, float], date | None]:
+        """董監質權設定占持有股數彙總表：每列是一個級距，公司名稱欄是「代號 名稱 比例」多行文字。"""
+        ratios: dict[str, float] = {}
+        latest: date | None = None
+        for market in ("twse", "tpex"):
+            for r in _rows(self.raw(market, "pledge")):
+                d = parse_tw_date(pick(r, "出表日期", "Date"))
+                if d and (latest is None or d > latest):
+                    latest = d
+                text = str(pick(r, "公司名稱", "CompanyName") or "")
+                for line in text.splitlines():
+                    parts = line.split()
+                    if len(parts) >= 3 and _is_common_stock(parts[0]):
+                        pct = to_number(parts[-1])
+                        if pct is not None:
+                            ratios[parts[0]] = pct
+        return ratios, latest
+
     # ---------- 公司資料與交易狀態 ----------
     def companies(self) -> list[dict]:
         out: list[dict] = []

@@ -54,6 +54,10 @@ class Settings:
     notify: dict[str, Any] = field(default_factory=dict)
     backtest: dict[str, Any] = field(default_factory=dict)
     all_features: dict[str, str] = field(default_factory=dict)
+    unlock_hints: dict[str, str] = field(default_factory=dict)
+
+    def unlock_hint(self, feature: str) -> str:
+        return self.unlock_hints.get(feature, "升級 FinMind 方案後可用")
 
     def enabled(self, feature: str) -> bool:
         if feature not in self.all_features:
@@ -108,6 +112,7 @@ def load_settings(plan_name: str | None = None, config_dir: Path = CONFIG_DIR) -
         notify=_load_yaml("notify.yaml", config_dir),
         backtest=_load_yaml("backtest.yaml", config_dir),
         all_features=all_features,
+        unlock_hints=plans_cfg.get("unlock_hints") or {},
     )
 
 

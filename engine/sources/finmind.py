@@ -182,6 +182,15 @@ def parse_shareholding(rows: list[dict]) -> list[dict]:
     ]
 
 
+def parse_sbl(rows: list[dict]) -> list[dict]:
+    """借券賣出餘額（TaiwanDailyShortSaleBalances）。"""
+    return [
+        {"stock_id": r["stock_id"], "date": date.fromisoformat(r["date"]),
+         "sbl_balance": to_int(r.get("SBLShortSalesCurrentDayBalance"))}
+        for r in rows if r.get("SBLShortSalesCurrentDayBalance") is not None
+    ]
+
+
 # ---------- 大盤燈號輸入（第 4 階段） ----------
 
 def parse_us_close(rows: list[dict], series: str) -> list[dict]:

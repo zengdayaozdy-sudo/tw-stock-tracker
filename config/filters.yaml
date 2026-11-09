@@ -71,3 +71,16 @@ events:
   warn_days_before: 2           # 事件前 N 個交易日開始提示
   warn_days_after: 1            # 事件後 N 個交易日仍提示
   keep_past_days: 30            # 抓取時保留多久以前的事件
+  # MSCI 季度調整：只提示市值達門檻的股票（MSCI 台灣指數成分股多為大型股）
+  # 日期來源：MSCI 官方 Index Review 時程表（https://www.msci.com/eqb/pressreleases/archive/ir_dates.pdf，2026-11-09 查詢）
+  # 換股在生效日前一個交易日收盤進行
+  index_review_min_market_cap: 30000000000
+  index_reviews:
+    - {name: MSCI 2026 年 11 月, announce: 2026-11-11, effective: 2026-12-01}
+    - {name: MSCI 2027 年 2 月, announce: 2027-02-09, effective: 2027-03-01}
+    - {name: MSCI 2027 年 5 月, announce: 2027-05-10, effective: 2027-05-28}
+    - {name: MSCI 2027 年 8 月, announce: 2027-08-12, effective: 2027-09-01}
+    - {name: MSCI 2027 年 11 月, announce: 2027-11-11, effective: 2027-12-01}
+    - {name: MSCI 2028 年 2 月, announce: 2028-02-10, effective: 2028-03-01}
+    - {name: MSCI 2028 年 5 月, announce: 2028-05-11, effective: 2028-06-01}
+    - {name: MSCI 2028 年 8 月, announce: 2028-08-14, effective: 2028-09-01}

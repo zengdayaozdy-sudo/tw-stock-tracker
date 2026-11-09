@@ -22,7 +22,7 @@ UPSERT_SPECS: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
 # chips 由多個來源分批寫入，只更新本次有提供的欄位
 CHIP_COLUMNS = (
     "foreign_net", "trust_net", "dealer_net", "foreign_holding_pct",
-    "margin_balance", "short_balance", "major_holder_pct", "branches",
+    "margin_balance", "short_balance", "major_holder_pct", "branches", "sbl_balance",
 )
 
 
@@ -586,6 +586,29 @@ class Repository:
                 (key, json.dumps(value, ensure_ascii=False)),
             )
 
+
+    def set_pledge_ratios(self, ratios: dict[str, float], as_of: date) -> int:
+        """董監質押比：彙總表只列質押比較高的公司，沒列出的視為 0。"""
+        with self.conn.cursor() as cur:
+            cur.execute("UPDATE stocks SET pledge_ratio = 0, pledge_date = %s", (as_of,))
+            cur.executemany("UPDATE stocks SET pledge_ratio = %s, pledge_date = %s WHERE stock_id = %s",
+                            [(v, as_of, k) for k, v in ratios.items()])
+        return len(ratios)
+
+    def market_caps(self, ids: list[str]) -> dict[str, float | None]:
+        if not ids:
+            return {}
+        with self.conn.cursor() as cur:
+            cur.execute("SELECT stock_id, market_cap FROM stocks WHERE stock_id = ANY(%s)", (ids,))
+            return {s: (float(c) if c is not None else None) for s, c in cur.fetchall()}
+
+    def sbl_history_days(self, ids: list[str]) -> dict[str, int]:
+        if not ids:
+            return {}
+        with self.conn.cursor() as cur:
+            cur.execute("SELECT stock_id, count(*) FROM chips WHERE stock_id = ANY(%s) AND sbl_balance IS NOT NULL "
+                        "GROUP BY stock_id", (ids,))
+            return {s: int(n) for s, n in cur.fetchall()}
 
     def holding_history_days(self, ids: list[str]) -> dict[str, int]:
         """每檔股票已有幾天的外資持股比例資料。"""

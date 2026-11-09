@@ -11,6 +11,9 @@ on:
           - probe-mops
           - probe-url
           - news
+          - fetch
+          - score
+          - filters
           - companies
           - seed-groups
           - watch-add
@@ -45,6 +48,8 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install -e ".[backtest]"
+      - name: 套用資料庫結構
+        run: python -m engine.cli migrate
       - name: 執行
         env:
           CMD: ${{ inputs.command }}
@@ -55,6 +60,9 @@ jobs:
             probe-mops)       python -m engine.cli probe-mops $ARGS ;;
             probe-url)        eval python -m engine.cli probe-url $ARGS ;;
             news)             python -m engine.cli news $ARGS ;;
+            fetch)            python -m engine.cli fetch $ARGS ;;
+            score)            python -m engine.cli score $ARGS ;;
+            filters)          python -m engine.cli filters $ARGS ;;
             watch-add)    python -m engine.cli watch add $ARGS ;;
             watch-remove) python -m engine.cli watch remove $ARGS ;;
             watch-list)   python -m engine.cli watch list ;;

@@ -7,7 +7,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date
 from typing import Any
 
@@ -49,8 +49,8 @@ class CachedIndicators:
     def __init__(self, frames: dict[str, StockFrames], cfg: dict):
         self.daily: dict[str, dict[str, Indicator]] = {}
         for sid, f in frames.items():
-            ind = technical(f.prices, cfg)
-            ind.update(chips(f.chips, f.prices, cfg))
+            ind = technical(f.prices, cfg, f.benchmark)
+            ind.update(chips(f.chips, f.prices, cfg, f.shares, f.pledge))
             self.daily[sid] = ind
 
     def __call__(self, stock: StockFrames, as_of: date, cfg: dict) -> dict[str, Indicator]:
@@ -77,7 +77,7 @@ class Planner:
             c = self.closes[sid]
             c = c[c.index <= pd.Timestamp(d)]
             cap = self.shares.get(sid) * float(c.iloc[-1]) if self.shares.get(sid) and not c.empty else None
-            out[sid] = StockFrames(sid, f.prices, f.chips, f.valuations, f.financials, f.industry, cap)
+            out[sid] = replace(f, market_cap=cap)
         return out
 
     def day(self, d: date) -> DayPlan:
