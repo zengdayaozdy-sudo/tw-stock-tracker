@@ -2,13 +2,15 @@
 
 每一筆賣出視為一筆已實現交易，成本採平均成本法（含買進手續費），收入扣除賣出手續費與證交稅。
 整體績效 =（已實現損益 + 未實現損益）÷ 總資金，期間為第一筆交易日到 as_of；
-同期加權指數、0050 以 market_series 收盤計算（0050 未含配息，僅供參考）。
+同期加權指數（價格指數）、0050（還原除息與分割，含息報酬）以 market_series 收盤計算。
 """
 
 from __future__ import annotations
 
 from datetime import date
 from typing import Any
+
+from engine.adjust import adjust_points
 
 
 def closed_trades(trades: list[dict]) -> tuple[list[dict], dict[str, dict]]:
@@ -112,5 +114,6 @@ def portfolio_stats(repo, as_of: date) -> dict[str, Any]:
         last_close[sid] = c  # closes 依日期排序，最後一筆為最新
     start = min((t["date"] for t in trades), default=as_of)
     benchmarks = {k: repo.series(k, start - timedelta(days=10), as_of) for k in BENCHMARK_LABELS}
+    benchmarks["etf_0050"] = adjust_points(benchmarks["etf_0050"], repo.adjustments(["0050"]).get("0050"))
     capital = float(repo.setting("total_capital", 0) or 0)
     return trade_stats(trades, last_close, capital, as_of, benchmarks)

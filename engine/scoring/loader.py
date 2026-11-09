@@ -6,6 +6,7 @@ from datetime import date, timedelta
 
 import pandas as pd
 
+from engine.adjust import adjust_prices
 from engine.repository import Repository
 from engine.scoring.indicators import StockFrames
 from engine.scoring.model import ScoreResult
@@ -56,6 +57,12 @@ def load_frames(repo: Repository, ids: list[str], as_of: date, lookback_years: i
 
         cur.execute("SELECT stock_id, industry, market_cap FROM stocks WHERE stock_id = ANY(%s)", (ids,))
         meta = {sid: (ind, float(cap) if cap is not None else None) for sid, ind, cap in cur.fetchall()}
+
+    # 還原股價（除權息、分割、減資），只用 as_of 當天以前已發生的調整
+    adjustments = repo.adjustments(ids)
+    for sid, frame in prices.items():
+        adj = [(d, f) for d, f in adjustments.get(sid, []) if d <= as_of]
+        prices[sid] = adjust_prices(frame, adj)
 
     empty_p = pd.DataFrame(columns=PRICE_COLS, index=pd.DatetimeIndex([]), dtype=float)
     empty_c = pd.DataFrame(columns=CHIP_COLS, index=pd.DatetimeIndex([]))

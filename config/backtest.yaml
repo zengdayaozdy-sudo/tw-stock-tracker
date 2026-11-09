@@ -1,0 +1,7 @@
+# 回測設定（第 13 節）
+start: "2023-01-02"          # 回測起日（需有足夠歷史：評分需 240 日股價＋3 年自身比較）
+holdout_months: 12           # 最後 N 個月為保留驗證區間，只在最後驗證一次
+initial_capital: 1000000     # 初始資金（元）
+allow_odd_lots: true         # 不足一張時以零股買進
+slippage: 0.0                # 每筆成交價額外滑價比例（買進加、賣出減）
+benchmarks: [taiex, etf_0050]

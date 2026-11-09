@@ -521,6 +521,35 @@ def cmd_backfill_new(args) -> None:
     print(f"已回補 {'、'.join(todo)}：{json.dumps(result, ensure_ascii=False)}")
 
 
+def cmd_backtest(args) -> None:
+    from pathlib import Path
+
+    from engine.backtest.runner import BacktestError, parse_sets, run_backtest
+    from engine.db import connect
+    from engine.repository import Repository
+
+    settings = load_settings()
+    period = "holdout" if args.holdout else "full" if args.full else "tune"
+    try:
+        result = run_backtest(settings, Repository(connect()), period, _parse_date(args.end) if args.end else None,
+                              overrides=parse_sets(args.set), force=args.force, save=not args.no_save)
+    except BacktestError as e:
+        raise SystemExit(f"無法回測：{e}") from e
+    print(result["report"])
+    out = Path(args.out) if args.out else Path("reports") / f"backtest-{period}-{result['fingerprint']}.md"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(result["report"], encoding="utf-8")
+    print(f"報告：{out}" + (f"（run {result['run_id']}）" if result["run_id"] else ""))
+
+
+def cmd_backtest_data(args) -> None:
+    from engine.backtest.runner import refresh_history
+
+    settings, conn, repo, exchange, finmind = _services()
+    counts = refresh_history(settings, repo, exchange, finmind, args.years, _parse_date(None))
+    print("已更新大盤歷史：" + "、".join(f"{k} {v}" for k, v in counts.items()))
+
+
 def cmd_step(args) -> None:
     label = dict(PIPELINE_STEPS)[args.command]
     raise SystemExit(f"「{label}」尚未實作（{_parse_date(args.date)}）")
@@ -614,6 +643,20 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--years", type=int, default=3)
     p.add_argument("--limit", type=int, default=10, help="每次最多回補幾檔（控制 FinMind 額度）")
     p.set_defaults(func=cmd_backfill_new)
+
+    p = sub.add_parser("backtest", help="回測（預設調參區間；--holdout 保留驗證區間只能跑一次）")
+    p.add_argument("--holdout", action="store_true", help="執行保留驗證區間（只允許一次）")
+    p.add_argument("--full", action="store_true", help="全期間（視同已使用保留區間）")
+    p.add_argument("--force", action="store_true", help="保留區間已驗證過仍強制重跑")
+    p.add_argument("--set", action="append", metavar="路徑=值", help="覆寫參數，例如 risk.stop_loss.percent=0.06")
+    p.add_argument("--end", help="回測迄日，預設為最新加權指數日期")
+    p.add_argument("--out", help="報告輸出路徑（Markdown）")
+    p.add_argument("--no-save", action="store_true", help="不寫入 backtest_runs")
+    p.set_defaults(func=cmd_backtest)
+
+    p = sub.add_parser("backtest-data", help="抓取回測所需的大盤長期歷史")
+    p.add_argument("--years", type=int, default=5)
+    p.set_defaults(func=cmd_backtest_data)
 
     p = sub.add_parser("monitor", help="盤中停損監控常駐程式（交易時間每隔數分鐘檢查持股）")
     p.add_argument("--once", action="store_true", help="立即檢查一次就結束（不論是否在交易時間）")

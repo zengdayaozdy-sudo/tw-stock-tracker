@@ -16,6 +16,7 @@ UPSERT_SPECS: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
     "market_series": (("series", "date"), ("value",)),
     "market": (("date",), ("light", "inputs", "group_strength")),
     "events": (("stock_id", "date", "event_type"), ("note", "source")),
+    "price_adjustments": (("stock_id", "date", "kind"), ("before_price", "after_price")),
 }
 
 # chips 由多個來源分批寫入，只更新本次有提供的欄位
@@ -579,5 +580,21 @@ class Repository:
             )
 
 
+    def adjustments(self, ids: list[str]) -> dict[str, list[tuple[date, float]]]:
+        """{stock_id: [(日期, 調整係數 = 參考價 ÷ 前一日收盤)]}，同一天多筆相乘。"""
+        with self.conn.cursor() as cur:
+            cur.execute(
+                "SELECT stock_id, date, before_price, after_price FROM price_adjustments WHERE stock_id = ANY(%s) "
+                "ORDER BY stock_id, date",
+                (ids,),
+            )
+            out: dict[str, dict[date, float]] = {}
+            for sid, d, before, after in cur.fetchall():
+                f = out.setdefault(sid, {})
+                f[d] = f.get(d, 1.0) * float(after) / float(before)
+            return {sid: sorted(v.items()) for sid, v in out.items()}
+
+
 def _f(x: Any) -> float | None:
     return None if x is None else float(x)
+

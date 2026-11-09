@@ -171,3 +171,13 @@ export function tradeStats(
     recent: closed.slice(-10),
   };
 }
+
+/** 0050 等序列還原除息與分割：調整日以前的價格乘上係數（與 engine/adjust.py 相同）。 */
+export function adjustPoints(points: [string, number][], adjustments: [string, number][]): [string, number][] {
+  if (!adjustments.length) return points;
+  return points.map(([d, v]) => {
+    let f = 1;
+    for (const [ad, factor] of adjustments) if (d < ad) f *= factor;
+    return [d, v * f];
+  });
+}

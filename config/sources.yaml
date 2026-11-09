@@ -29,6 +29,10 @@ finmind:
     us_price: USStockPrice                              # data_id：^SOX、TSM
     exchange_rate: TaiwanExchangeRate                   # data_id：USD
     futures_institutional: TaiwanFuturesInstitutionalInvestors  # data_id：TX
+    # 還原股價用（2026-11-09 實測免費可取得；TaiwanStockPriceAdj 需付費）
+    dividend_result: TaiwanStockDividendResult          # 除權息前後參考價
+    split_price: TaiwanStockSplitPrice                  # 股票分割
+    capital_reduction: TaiwanStockCapitalReductionReferencePrice  # 減資
 
 twse:
   verified: true   # 2026-11-08 probe 確認，2026-11-06 實際抓取全市場驗證

@@ -12,7 +12,7 @@
 | 6 | 證交所／櫃買 OpenAPI 端點與欄位名稱 | 已確認：2026-11-06 實際抓取，上市 1,083 檔、上櫃 802 檔三大法人與融資券欄位皆正確 |
 | 7 | 產業別是代碼 | 已處理：config/industries.yaml 對照表，查無代碼時顯示代碼 |
 | 8 | 費城半導體、台積電 ADR、台指期未平倉的免費資料來源 | 已確認（2026-11-08 實測）：FinMind USStockPrice（^SOX、TSM）、TaiwanExchangeRate（USD）、TaiwanFuturesInstitutionalInvestors（TX），不帶 token 也可取得 |
-| 9 | 回測採用 FinLab 或開源套件 | 第 10 階段決定，寫入 decisions.md |
+| 9 | 回測採用 FinLab 或開源套件 | 已決定（2026-11-09）：backtrader，理由見 decisions.md |
 | 10 | 盤中監控常駐程式要跑在哪台電腦（作業系統） | 已決定（2026-11-08）：擁有者的 Mac，以 launchd 啟動（deploy/launchd/install.sh） |
 | 11 | FinMind 財報 type 名稱（EPS、GrossProfit、OperatingIncome、IncomeAfterTaxes、Equity、Liabilities、TotalAssets）需實測確認，名稱寫在 engine/scoring/indicators.py 的 METRIC_KEYS | 回補資料後檢查評分拆解是否還有「資料缺漏」 |
 | 12 | 免費模式市值 | 已處理：公司資料實收資本額 ÷ 面額 = 股數，每日 × 收盤價更新市值 |
@@ -23,3 +23,6 @@
 | 17 | 總資金目前使用資料庫預設 100 萬（settings.total_capital），影響建議張數 | 可用 `python -m engine.cli capital 金額` 或 GitHub Actions 手動操作 `capital` 設定；第 9 階段網站設定頁也可修改 |
 | 18 | 進場條件、價位與風控參數（risk.yaml）為初始值 | 第 10 階段回測後調整 |
 | 19 | LINE 官方帳號免費方案每月推播則數有上限，請在 LINE Official Account Manager 確認目前方案額度；每日報告通常 1 則、有警告時加 1 則 | 待擁有者確認；超過時可把 notify.yaml 的 max_messages_per_report 調小 |
+| 20 | 付費模式回測需包含已下市股票，但目前 stocks 沒有下市資料（FinMind 有 TaiwanStockDelisting，尚未實測是否免費） | 升級付費方案前補上；報告會標註倖存者偏差 |
+| 21 | 回測期間：預設從 2023-01 起、最後 12 個月為保留區間；評分需要 240 日股價＋3 年自身歷史，自選股請先以 `backfill --years 5` 回補 | 擁有者依資料長度調整 config/backtest.yaml |
+| 22 | 首次在本機以 8 檔自選股、2024-11 至 2025-11 回測（調參區間）：年化 +14.8%、最大回撤 −8.3%、期望值 +0.99%，同期 0050 含息 +35.2%；出場以「分數跌出門檻」最多（14／35）。僅為測試資料，正式調參待擁有者決定 | 參考 |

@@ -37,7 +37,7 @@ python -m engine.cli alert        # 只檢查並推播系統警告（排程任�
 - [x] 7. 持股追蹤、賣出提醒、交易日誌統計
 - [x] 8. 盤中停損監控（常駐在擁有者的 Mac）
 - [x] 9. 個人網站（Next.js，密碼保護）
-- [ ] 10. 回測
+- [x] 10. 回測（backtrader，調參／保留驗證區間）
 - [ ] 11. 排程與維運文件
 
 ## 已完成的前置設定
@@ -89,6 +89,23 @@ python -m engine.cli trade list                               # 交易紀錄與�
 python -m engine.cli stats                                    # 勝率、期望值、與加權指數及 0050 比較
 ```
 
+## 回測
+
+沿用正式系統的評分、濾網、進場條件、參考價位、風控與賣出規則，逐日只用當天以前已知的資料（財報依公布日），交易由 backtrader 模擬：D 日收盤產生訊號、D+1 日成交，扣除手續費與證交稅，股價已還原除權息與分割。
+
+```bash
+python -m engine.cli backtest-data --years 5                    # 抓大盤長期歷史、除權息參考價
+python -m engine.cli backtest                                   # 調參區間（可重複執行）
+python -m engine.cli backtest --set risk.stop_loss.percent=0.06 # 覆寫參數試算
+python -m engine.cli backtest --holdout                         # 保留驗證區間：調參完成後只執行一次
+```
+
+- 期間在 `config/backtest.yaml`：起日、最後幾個月為保留區間（預設 12 個月）、初始資金
+- 報告：年化報酬、最大回撤、勝率、平均獲利／虧損、期望值、交易次數，與加權指數及 0050（含息）比較；寫入 `reports/` 與資料表 `backtest_runs`
+- 相同參數與資料會得到相同結果（報告附指紋）
+- 免費模式只回測自選股，報告會標註選擇偏差；消息面不參與回測
+- 也可從 GitHub Actions「手動操作」執行 `backtest-data`／`backtest`／`backtest-holdout`，報告在執行結果的 Artifacts
+
 ## 盤中停損監控（這台 Mac）
 
 交易日 09:00–13:30 每 3 分鐘檢查持股現價（證交所即時行情），觸及停損就推播 LINE，同一檔同一天只提醒一次。
@@ -115,7 +132,7 @@ python -m engine.cli monitor --once  # 先手動檢查一次確認設定正確
 ## 交給 Claude Code 接手
 
 1. 用 Claude Code 開啟本 repo
-2. 指示：「讀 CLAUDE.md、README.md、docs/open-questions.md，從第 14 節第 10 階段開始開發」
+2. 指示：「讀 CLAUDE.md、README.md、docs/open-questions.md，從第 14 節第 11 階段開始開發」
 3. 消息面判讀目前用關鍵字（排程預設 `AI_PROVIDER=rules`）；要改用 Claude，在 GitHub Variables 設 `AI_PROVIDER=claude` 並加 `ANTHROPIC_API_KEY` Secret（見 docs/open-questions.md #13）
 4. 第 6 階段（LINE）前，擁有者需在 GitHub Secrets 加上 `LINE_CHANNEL_ACCESS_TOKEN`、`LINE_OWNER_USER_ID`
 5. 第 9 階段（網站）前，在 Vercel 匯入本 repo，Root Directory 設為 `web`，並設定 `DATABASE_URL`、`SITE_PASSWORD`、`SESSION_SECRET`

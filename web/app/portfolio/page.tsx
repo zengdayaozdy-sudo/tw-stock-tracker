@@ -2,11 +2,11 @@ import { recordTrade, updateHoldingLevels } from "@/app/actions";
 import { ActionForm } from "@/components/ActionForm";
 import { Change, Panel, StockLink } from "@/components/ui";
 import { HORIZON_LABELS, money, num, pct, todayTaipei, tone } from "@/lib/format";
-import { holdingsDetail, lastCloses, names, seriesBetween, setting, signalsOn, trades as loadTrades, latestDate } from "@/lib/queries";
+import { holdingsDetail, lastCloses, latestDate, names, priceAdjustments, seriesBetween, setting, signalsOn, trades as loadTrades } from "@/lib/queries";
 import { requireSession } from "@/lib/session";
-import { tradeStats, type Trade } from "@/lib/trading";
+import { adjustPoints, tradeStats, type Trade } from "@/lib/trading";
 
-const BENCH: Record<string, string> = { taiex: "加權指數", etf_0050: "0050" };
+const BENCH: Record<string, string> = { taiex: "加權指數", etf_0050: "0050（含息）" };
 
 export default async function PortfolioPage() {
   await requireSession();
@@ -30,13 +30,14 @@ export default async function PortfolioPage() {
   }));
   const ids = [...new Set(trades.map((t) => t.stock_id))];
   const start = trades.length ? trades.map((t) => t.date).sort()[0] : today;
-  const [closes, tradeNames, taiex, etf] = await Promise.all([
+  const [closes, tradeNames, taiex, etf, etfAdj] = await Promise.all([
     lastCloses(ids, today),
     names(ids),
     seriesBetween("taiex", start, today),
     seriesBetween("etf_0050", start, today),
+    priceAdjustments("0050"),
   ]);
-  const st = tradeStats(trades, closes, Number(capital), today, { taiex, etf_0050: etf });
+  const st = tradeStats(trades, closes, Number(capital), today, { taiex, etf_0050: adjustPoints(etf, etfAdj) });
   const value = holdings.reduce((a, h) => a + (h.close ?? h.avg_cost) * h.shares, 0);
 
   return (
@@ -163,7 +164,7 @@ export default async function PortfolioPage() {
             <div className="stat" key={k}><div className="stat-label">同期 {BENCH[k]}</div><div className="stat-value"><Change value={v} digits={2} /></div></div>
           ))}
         </div>
-        <p className="small faint panel-body">平均成本法（含買進手續費）；每筆賣出算一筆交易。0050 報酬未含配息</p>
+        <p className="small faint panel-body">平均成本法（含買進手續費）；每筆賣出算一筆交易。加權指數為價格指數；0050 已還原除息與分割</p>
       </Panel>
 
       <div style={{ height: 14 }} />

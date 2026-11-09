@@ -12,3 +12,4 @@ node_modules/
 data/cache/
 *.log
 *.egg-info/
+reports/

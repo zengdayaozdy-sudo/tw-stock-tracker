@@ -11,11 +11,14 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8", "ruff>=0.6"]
+dev = ["pytest>=8", "ruff>=0.6", "backtrader>=1.9.78"]
 claude = ["anthropic>=1.0"]   # AI_PROVIDER=claude 時才需要
+backtest = ["backtrader>=1.9.78"]  # 回測（GPLv3，個人自用）
 
 [tool.pytest.ini_options]
 testpaths = ["engine/tests"]
+# backtrader 使用已棄用的 datetime.utcnow()（仍可運作，見 docs/decisions.md）
+filterwarnings = ["ignore:datetime.datetime.utcnow:DeprecationWarning:backtrader"]
 
 [tool.ruff]
 line-length = 125

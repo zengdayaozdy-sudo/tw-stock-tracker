@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import math
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import date
 from typing import Any
@@ -154,7 +155,10 @@ def _clean(x: Any) -> Any:
 
 
 def score_universe(settings: Settings, stocks: dict[str, StockFrames],
-                   groups: dict[str, tuple[str, set[str]]], as_of: date) -> list[ScoreResult]:
+                   groups: dict[str, tuple[str, set[str]]], as_of: date,
+                   indicator_fn: Callable[[StockFrames, date, dict], dict[str, Indicator]] = compute_all,
+                   ) -> list[ScoreResult]:
+    """indicator_fn：預設每次重算；回測可傳入快取版本（技術面、籌碼面只算一次）。"""
     cfg = settings.scoring
     market_mode = settings.enabled("market_percentile")
     neutral = cfg["missing_value_score"]
@@ -171,7 +175,7 @@ def score_universe(settings: Settings, stocks: dict[str, StockFrames],
         if p.index[-1] != pd.Timestamp(as_of):
             insufficient[sid] = "當日沒有股價資料"
             continue
-        ind = compute_all(s, as_of, cfg)
+        ind = indicator_fn(s, as_of, cfg)
         indicators[sid] = ind
         current[sid] = {k: i.current(as_of, cfg["max_stale_days"][i.freq]) for k, i in ind.items()}
 

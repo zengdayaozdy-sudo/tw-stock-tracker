@@ -112,7 +112,11 @@ def fetch_daily(
     result.counts["shareholding"] = refresh_shareholding(repo, finmind, ids, trade_date)
     result.finmind_calls = finmind.quota.calls_this_hour - before
 
-    # 5. 跳空檢查（警告）
+    # 5. 除權息、分割、減資參考價（只抓最近有除權息事件的股票）
+    result.counts["adjustments"] = refresh_adjustments(repo, finmind, ids, trade_date)
+    result.finmind_calls = finmind.quota.calls_this_hour - before
+
+    # 6. 跳空檢查（警告）
     yesterday = _previous_closes(repo, ids, trade_date)
     today = {r["stock_id"]: r["close"] for r in prices if r["stock_id"] in set(ids)}
     result.quality.warnings.extend(check_price_jumps(today, yesterday))
@@ -170,6 +174,24 @@ def refresh_financials(repo: Repository, finmind: FinMindClient, ids: list[str],
     return count
 
 
+def refresh_adjustments(repo: Repository, finmind: FinMindClient, ids: list[str], today: date,
+                        force: bool = False) -> int:
+    """最近 5 天內有除權息事件，或每週一，才抓參考價（每檔 3 次 FinMind 呼叫）。"""
+    if not ids:
+        return 0
+    if not force and today.weekday() != 0:
+        with repo.conn.cursor() as cur:
+            cur.execute("SELECT DISTINCT stock_id FROM events WHERE stock_id = ANY(%s) AND event_type = '除權息' "
+                        "AND date BETWEEN %s AND %s", (ids, today - timedelta(days=5), today))
+            ids = [r[0] for r in cur.fetchall()]
+    count = 0
+    start = today - timedelta(days=30 if not force else 365 * 6)
+    for sid in ids:
+        for kind, key in fm.ADJUSTMENT_DATASETS.items():
+            count += repo.upsert("price_adjustments", fm.parse_adjustments(finmind.fetch(key, sid, start), kind))
+    return count
+
+
 def refresh_shareholding(repo: Repository, finmind: FinMindClient, ids: list[str], today: date) -> int:
     """外資持股比例：免費模式每週一更新即可。"""
     if today.weekday() != 0:
@@ -197,6 +219,9 @@ def backfill(repo: Repository, finmind: FinMindClient, ids: list[str], years: in
         )
         statements = finmind.fetch("income_statement", sid, start) + finmind.fetch("balance_sheet", sid, start)
         counts["financials"] += repo.upsert("financials", fm.parse_statements(statements))
+        for kind, key in fm.ADJUSTMENT_DATASETS.items():
+            counts["adjustments"] = counts.get("adjustments", 0) + repo.upsert(
+                "price_adjustments", fm.parse_adjustments(finmind.fetch(key, sid, start), kind))
         repo.conn.commit()
         log.info("已回補 %s", sid)
     return counts

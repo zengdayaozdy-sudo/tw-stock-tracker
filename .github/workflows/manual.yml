@@ -20,8 +20,11 @@ on:
           - trade-list
           - stats
           - capital
+          - backtest-data
+          - backtest
+          - backtest-holdout
       args:
-        description: 參數（自選股：2330 2317；買賣：2330 1050 1000 --date 2026-11-06（代號 價格 股數）；總資金：1500000）
+        description: 參數（回測：--set risk.stop_loss.percent=0.06；自選股：2330 2317；買賣：2330 1050 1000 --date 2026-11-06（代號 價格 股數）；總資金：1500000）
         required: false
 
 jobs:
@@ -38,7 +41,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install -e .
+      - run: pip install -e ".[backtest]"
       - name: 執行
         env:
           CMD: ${{ inputs.command }}
@@ -55,4 +58,14 @@ jobs:
             trade-list)   python -m engine.cli trade list ;;
             stats)        python -m engine.cli stats ;;
             capital)      python -m engine.cli capital $ARGS ;;
+            backtest-data)    python -m engine.cli backtest-data $ARGS ;;
+            backtest)         python -m engine.cli backtest $ARGS ;;
+            backtest-holdout) python -m engine.cli backtest --holdout $ARGS ;;
           esac
+      - name: 上傳回測報告
+        if: ${{ startsWith(inputs.command, 'backtest') && always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: backtest-report
+          path: reports/
+          if-no-files-found: ignore

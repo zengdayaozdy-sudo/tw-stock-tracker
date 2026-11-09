@@ -105,3 +105,12 @@ describe("交易統計", () => {
     expect(st.start).toBeNull();
   });
 });
+
+describe("還原 0050", () => {
+  it("分割前的價格換算成分割後", async () => {
+    const { adjustPoints } = await import("./trading");
+    const pts = adjustPoints([["2025-06-17", 188.65], ["2025-06-19", 47.1]], [["2025-06-18", 47.16 / 188.65]]);
+    expect(pts[0][1]).toBeCloseTo(47.16);
+    expect(pts[1][1]).toBe(47.1);
+  });
+});

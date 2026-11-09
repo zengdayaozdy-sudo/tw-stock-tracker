@@ -55,6 +55,7 @@ class FinMindClient:
 # ---------- 轉換成資料表格式 ----------
 
 def parse_prices(rows: list[dict]) -> list[dict]:
+    """FinMind 在無成交日會回傳價格 0，這些資料列略過（等同沒有成交）。"""
     return [
         {
             "stock_id": r["stock_id"],
@@ -67,6 +68,7 @@ def parse_prices(rows: list[dict]) -> list[dict]:
             "turnover": to_number(r.get("Trading_money")),
         }
         for r in rows
+        if (to_number(r.get("close")) or 0) > 0
     ]
 
 
@@ -225,3 +227,18 @@ def parse_close_series(rows: list[dict], series: str) -> list[dict]:
         for r in rows
         if to_number(r.get("close"))
     ]
+
+
+ADJUSTMENT_DATASETS = {"dividend": "dividend_result", "split": "split_price", "capital_reduction": "capital_reduction"}
+
+
+def parse_adjustments(rows: list[dict], kind: str) -> list[dict]:
+    """除權息／分割／減資：前一日收盤與參考價。參考價缺值時用開盤參考價。"""
+    out = []
+    for r in rows:
+        before = to_number(r.get("before_price"))
+        after = to_number(r.get("after_price")) or to_number(r.get("reference_price"))
+        if before and after and before > 0 and after > 0 and abs(after / before - 1) > 1e-6:
+            out.append({"stock_id": r["stock_id"], "date": date.fromisoformat(r["date"]), "kind": kind,
+                        "before_price": before, "after_price": after})
+    return out

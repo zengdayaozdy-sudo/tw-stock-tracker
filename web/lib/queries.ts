@@ -250,6 +250,12 @@ export async function seriesBetween(series: string, start: string, end: string) 
   return rows.map((r) => [r.date, r.value] as [string, number]);
 }
 
+export async function priceAdjustments(id: string): Promise<[string, number][]> {
+  const rows = await db()`
+    SELECT date, before_price, after_price FROM price_adjustments WHERE stock_id = ${id} ORDER BY date`;
+  return rows.map((r) => [r.date, r.after_price / r.before_price] as [string, number]);
+}
+
 export async function lastCloses(ids: string[], date: string): Promise<Record<string, number>> {
   if (!ids.length) return {};
   const rows = await db()`

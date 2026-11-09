@@ -22,7 +22,8 @@ def period_return(s: pd.Series, as_of: date, days: int) -> float | None:
     s = s[s.index <= pd.Timestamp(as_of)].dropna()
     if len(s) <= days or s.index[-1] != pd.Timestamp(as_of):
         return None
-    return float(s.iloc[-1] / s.iloc[-1 - days] - 1)
+    base = float(s.iloc[-1 - days])
+    return float(s.iloc[-1]) / base - 1 if base > 0 else None
 
 
 def _rank_pct(values: dict[str, float | None]) -> dict[str, float]:
