@@ -106,6 +106,20 @@ def trading_calendar(repo: Repository, start: date, end: date, ids: list[str]) -
     return pd.DatetimeIndex(pd.to_datetime(days))
 
 
+def _ensure_connection(repo: Repository) -> None:
+    """長時間模擬後連線可能已被資料庫關閉：測試一次，失敗就重新連線。"""
+    import psycopg
+
+    from engine.db import connect
+
+    try:
+        with repo.conn.cursor() as cur:
+            cur.execute("SELECT 1")
+        repo.conn.rollback()
+    except psycopg.Error:
+        repo.conn = connect()
+
+
 def fingerprint(settings: Settings, ids: list[str], repo: Repository, start: date, end: date) -> str:
     cfg = {k: getattr(settings, k) for k in OVERRIDABLE}
     with repo.conn.cursor() as cur:
@@ -174,7 +188,9 @@ def run_backtest(settings: Settings, repo: Repository, period: str = "tune", end
         warnings.append("沒有加權指數歷史，大盤燈號與族群相對報酬不完整（執行 backtest-data）")
 
     fp = fingerprint(settings, list(frames), repo, start, stop)
-    # 資料都已讀進記憶體：先結束讀取交易，避免模擬期間連線閒置在交易中被資料庫中斷
+    adj_0050 = repo.adjustments(["0050"]).get("0050")
+    # 資料都已讀進記憶體：先結束讀取交易。模擬可能跑十幾分鐘，期間不再碰資料庫，
+    # 連線可能被資料庫閒置斷線，存檔前再確認並重連
     repo.conn.rollback()
 
     planner = Planner(settings, frames, groups, series, shares)
@@ -187,7 +203,7 @@ def run_backtest(settings: Settings, repo: Repository, period: str = "tune", end
     result = simulate(plans, {sid: f.prices for sid, f in frames.items()}, calendar, settings, _groups_of(groups), names)
     benchmarks = {k: series[k] for k in settings.backtest.get("benchmarks", []) if series.get(k)}
     if "etf_0050" in benchmarks:  # 0050 還原除息與分割＝含息報酬
-        benchmarks["etf_0050"] = adjust_points(benchmarks["etf_0050"], repo.adjustments(["0050"]).get("0050"))
+        benchmarks["etf_0050"] = adjust_points(benchmarks["etf_0050"], adj_0050)
     metrics = build_metrics(result, benchmarks, calendar[0].date(), calendar[-1].date())
     metrics["universe"] = len(frames)
     metrics["bearish_days"] = sum(1 for p in plans.values() if p.light == "bearish")
@@ -196,6 +212,7 @@ def run_backtest(settings: Settings, repo: Repository, period: str = "tune", end
     report = render_markdown(metrics, period, settings.plan.label, warnings, params) + f"\n指紋：`{fp}`\n"
     run_id = None
     if save:
+        _ensure_connection(repo)
         equity = [(d.isoformat(), round(v)) for d, v in result["equity"]]
         with repo.conn.cursor() as cur:
             cur.execute(
