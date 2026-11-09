@@ -276,6 +276,21 @@ def cmd_probe_mops(args) -> None:
                 print("  head:", " ".join(body[:1500].split()))
             except Exception as e:
                 print(f"\n[{method}] {url} 失敗：{e}")
+        try:
+            r = c.post("https://mops.twse.com.tw/mops/api/t05st02",
+                       json={"year": str(roc), "month": f"{d.month:02d}", "day": f"{d.day:02d}"})
+            rows = r.json()["result"]["data"]
+            kinds: dict[str, int] = {}
+            for row in rows:
+                k = row[-1]["parameters"].get("marketKind")
+                kinds[k] = kinds.get(k, 0) + 1
+            print(f"\n[t05st02] 筆數={len(rows)} marketKind={kinds} keys={list(r.json()['result'].keys())}")
+            params = rows[1][-1]["parameters"]
+            r = c.post("https://mops.twse.com.tw/mops/api/t05st02_detail", json=params)
+            print(f"[detail] {params} status={r.status_code}")
+            print("  head:", " ".join(r.text[:2500].split()))
+        except Exception as e:
+            print(f"[detail] 失敗：{e}")
 
 
 def cmd_probe(args) -> None:
