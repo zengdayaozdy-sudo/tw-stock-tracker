@@ -88,6 +88,33 @@ def _coerce(stock_id: str, raw: dict, item: dict, judged_by: str, event_types: l
     return Judgment(stock_id, is_neg, event, conf, summary, item.get("url"), judged_by)
 
 
+_OPEN, _CLOSE = "（(", "）)"
+
+
+def strip_form_hints(text: str) -> str:
+    """去掉公開資訊觀測站申報表單的填寫說明，例如「（請輸入…訴訟及非訟代理人）」，避免關鍵字誤判。"""
+    out: list[str] = []
+    i = 0
+    while i < len(text):
+        if text[i] in _OPEN:
+            depth, j = 0, i
+            while j < len(text):
+                if text[j] in _OPEN:
+                    depth += 1
+                elif text[j] in _CLOSE:
+                    depth -= 1
+                    if depth == 0:
+                        break
+                j += 1
+            group = text[i:j + 1]
+            if depth == 0 and ("請輸入" in group or "請選擇" in group):
+                i = j + 1
+                continue
+        out.append(text[i])
+        i += 1
+    return "".join(out)
+
+
 class RuleJudge:
     """關鍵字備援判讀：命中設定檔關鍵字即視為重大利空。"""
 
@@ -99,7 +126,7 @@ class RuleJudge:
 
     def judge(self, item: dict) -> Judgment:
         title = item.get("title") or ""
-        text = f"{title}\n{(item.get('body') or '')[:300]}"
+        text = f"{title}\n{strip_form_hints(item.get('body') or '')[:300]}"
         for event, words in self.keywords.items():
             for w in words:
                 if w in title:

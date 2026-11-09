@@ -493,3 +493,14 @@ def test_mops_error_response_raises():
         assert "異常" in str(e)
     else:
         raise AssertionError("應該丟出錯誤")
+
+
+def test_rule_judge_ignores_mops_form_hints():
+    from engine.ai import RuleJudge, strip_form_hints
+
+    body = ("1.人員變動別（請輸入發言人、重要營運主管(如:執行長、營運長)、內部稽核主管或訴訟及非訟代理人）:永續長\n"
+            "5.異動情形（請輸入「辭職」、「新任」或「解任」）:新任")
+    assert "訴訟" not in strip_form_hints(body) and "永續長" in strip_form_hints(body)
+    judge = RuleJudge({"rule_keywords": {"重大訴訟": ["訴訟"]}})
+    assert not judge.judge({"stock_id": "6515", "title": "公告本公司設置永續長", "body": body}).is_major_negative
+    assert judge.judge({"stock_id": "1", "title": "公告", "body": "本公司遭提起訴訟（金額 1 億）"}).is_major_negative
