@@ -173,6 +173,10 @@ def run_backtest(settings: Settings, repo: Repository, period: str = "tune", end
     if not series["taiex"]:
         warnings.append("沒有加權指數歷史，大盤燈號與族群相對報酬不完整（執行 backtest-data）")
 
+    fp = fingerprint(settings, list(frames), repo, start, stop)
+    # 資料都已讀進記憶體：先結束讀取交易，避免模擬期間連線閒置在交易中被資料庫中斷
+    repo.conn.rollback()
+
     planner = Planner(settings, frames, groups, series, shares)
     plans = {}
     for i, ts in enumerate(calendar):
@@ -189,7 +193,6 @@ def run_backtest(settings: Settings, repo: Repository, period: str = "tune", end
     metrics["bearish_days"] = sum(1 for p in plans.values() if p.light == "bearish")
     metrics["candidate_days"] = sum(1 for p in plans.values() if p.candidates)
     params = {"overrides": overrides or {}}
-    fp = fingerprint(settings, list(frames), repo, start, stop)
     report = render_markdown(metrics, period, settings.plan.label, warnings, params) + f"\n指紋：`{fp}`\n"
     run_id = None
     if save:
