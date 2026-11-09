@@ -6,6 +6,10 @@ on:
     # GitHub 排程可能延遲數分鐘到數十分鐘；官方資料未更新時 fetch 最多再等 90 分鐘。
     # 休市日由 trading-day 步驟判斷後略過後續步驟。
     - cron: "30 7 * * 1-5"
+    # 備援：GitHub 排程偶爾不觸發（2026-11-09 就沒有觸發）。17:00、19:00 再各排一次，
+    # 當天已推播成功會在「判斷是否為交易日」步驟直接略過，不會重複推播。
+    - cron: "0 9 * * 1-5"
+    - cron: "0 11 * * 1-5"
   workflow_dispatch:
     inputs:
       date:
@@ -47,7 +51,7 @@ jobs:
         run: python -m engine.cli sync-config
       - name: 判斷是否為交易日
         id: day
-        run: python -m engine.cli trading-day $DATE_ARG
+        run: python -m engine.cli trading-day $DATE_ARG ${{ github.event_name == 'schedule' && '--skip-if-done' || '' }}
       - name: 抓取資料與完整性檢查
         if: steps.day.outputs.open == 'true'
         run: python -m engine.cli fetch $DATE_ARG --wait-minutes ${{ inputs.date && '0' || '90' }}

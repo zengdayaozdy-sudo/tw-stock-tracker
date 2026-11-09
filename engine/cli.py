@@ -100,6 +100,21 @@ def cmd_trading_day(args) -> None:
 
     settings = load_settings()
     d = _parse_date(args.date)
+    if getattr(args, "skip_if_done", False) and os.environ.get("DATABASE_URL"):
+        # 備援排程：當天的每日報告已成功推播就不再重跑，避免重複推播
+        from engine.db import connect
+        from engine.repository import Repository
+
+        conn = connect()
+        done = Repository(conn).latest_job("notify", d)
+        conn.close()
+        if done and done[0] == "success":
+            print(f"{d}：今日排程已完成，略過")
+            out = os.environ.get("GITHUB_OUTPUT")
+            if out:
+                with open(out, "a", encoding="utf-8") as f:
+                    f.write("open=false\n")
+            return
     is_open = _is_trading_day(ExchangeClient(settings, HttpClient.from_settings(settings.sources["http"])), d)
     print(f"{d}：{'交易日' if is_open else '休市'}")
     if not is_open and os.environ.get("DATABASE_URL"):
@@ -750,6 +765,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser("trading-day", help="判斷是否為交易日（排程用）")
     p.add_argument("--date")
+    p.add_argument("--skip-if-done", action="store_true", help="當天每日報告已推播成功就略過（備援排程用）")
     p.set_defaults(func=cmd_trading_day)
 
     sub.add_parser("holders", help="集保股權分散表：大戶持股比例（每週）").set_defaults(func=cmd_holders)
