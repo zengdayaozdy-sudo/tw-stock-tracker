@@ -1,9 +1,10 @@
 import Link from "next/link";
 import { CountUp } from "@/components/CountUp";
 import { DivBar } from "@/components/DivBar";
+import { Updated } from "@/components/Updated";
 import { BuySignalTable, Change, Panel, StockLink } from "@/components/ui";
 import { LIGHT_LABELS, dateLabel, money, num, timeTaipei, tone } from "@/lib/format";
-import { holdingsDetail, lastHeartbeat, latestDate, latestJob, market, signalsOn } from "@/lib/queries";
+import { dataUpdates, holdingsDetail, lastHeartbeat, latestDate, latestJob, market, signalsOn } from "@/lib/queries";
 import { requireSession } from "@/lib/session";
 import { goToStock } from "./actions";
 
@@ -19,7 +20,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
       </>
     );
 
-  const [m, buys, sells, holdings, fetchJob, signalJob, notifyJob, heartbeat] = await Promise.all([
+  const [m, buys, sells, holdings, fetchJob, signalJob, notifyJob, heartbeat, upd] = await Promise.all([
     market(date),
     signalsOn(date, "buy"),
     signalsOn(date, "sell"),
@@ -28,6 +29,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
     latestJob("signals", date),
     latestJob("notify", date),
     lastHeartbeat("monitor_heartbeat"),
+    dataUpdates(),
   ]);
   const ranked = (m?.groups ?? []).filter((g) => g.rank);
   const blocked: { stock_id: string; name?: string; reasons: string[]; triggers: string[] }[] = signalJob?.detail?.blocked ?? [];
@@ -40,7 +42,10 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
       <header className="page-head">
         <div>
           <h1>{dateLabel(date)}</h1>
-          <p className="sub">收盤後評分與訊號</p>
+          <p className="sub">
+            收盤後評分與訊號<span className="sep">｜</span>
+            <Updated at={upd.notify ?? upd.signals ?? upd.score} />
+          </p>
         </div>
         <form action={goToStock} className="quick-search">
           <svg viewBox="0 0 20 20" className="search-icon" aria-hidden="true">
@@ -88,7 +93,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
       </section>
 
       <div className="grid wide-left">
-        <Panel title="大盤燈號依據" meta={m ? LIGHT_LABELS[m.light] : undefined}>
+        <Panel title="大盤燈號依據" meta={<Updated at={upd.filters} />}>
           {m ? (
             <ul className="votes">
               {m.inputs.map((i) => (
@@ -107,7 +112,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
           {m?.light === "bearish" && <p className="panel-note">偏空：不發新買進訊號、停損收緊、建議降低部位</p>}
         </Panel>
 
-        <Panel title="系統狀態" meta={<Link href="/status">詳細</Link>}>
+        <Panel title="系統狀態" meta={<Link href="/status">排程紀錄</Link>}>
           <dl className="kv panel-body">
             <dt>資料抓取</dt>
             <dd>
@@ -122,6 +127,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
               ) : (
                 <span className="tag block">{fetchJob.status}</span>
               )}
+              <Updated at={upd.fetch} empty="" />
             </dd>
             <dt>買進訊號</dt>
             <dd>
@@ -132,9 +138,17 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
               ) : (
                 <span className="tag warn">尚未執行</span>
               )}
+              <Updated at={upd.signals} empty="" />
+            </dd>
+            <dt>消息面排雷</dt>
+            <dd className="flush">
+              <Updated at={upd.news} empty="尚未執行" label="判讀" />
             </dd>
             <dt>LINE 報告</dt>
-            <dd>{notifyJob?.detail?.report_sent ? "已送出" : notifyJob ? "未送出" : "尚未執行"}</dd>
+            <dd>
+              {notifyJob?.detail?.report_sent ? "已送出" : notifyJob ? "未送出" : "尚未執行"}
+              <Updated at={notifyJob?.finished_at} empty="" label="" />
+            </dd>
             <dt>盤中監控</dt>
             <dd>{heartbeat ? `最後心跳 ${timeTaipei(heartbeat)}` : "尚未啟動"}</dd>
           </dl>
@@ -142,7 +156,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
       </div>
 
       <div className="gap" />
-      <Panel title="今日買進訊號" meta={`${buys.length} 筆`}>
+      <Panel title="今日買進訊號" meta={<>{buys.length} 筆<span className="sep">｜</span><Updated at={upd.signals} /></>}>
         {buys.length === 0 && m?.light === "bearish" ? (
           <p className="empty">大盤燈號偏空，今日不發新買進訊號</p>
         ) : (
@@ -162,7 +176,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
 
       <div className="gap" />
       <div className="grid two">
-        <Panel title="族群強弱" meta={<>相對大盤報酬｜<Link href="/groups">全部族群</Link></>}>
+        <Panel title="族群強弱" meta={<><Updated at={upd.filters} /><span className="sep">｜</span><Link href="/groups">全部族群</Link></>}>
           {ranked.length ? (
             <div className="table-wrap">
               <table>
@@ -210,7 +224,8 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
           meta={
             holdings.length ? (
               <>
-                市值 {money(value)}｜未實現 <span className={tone(value - cost)}>{money(value - cost)}</span>
+                <Updated at={upd.holdings} label="檢查" /><span className="sep">｜</span>未實現{" "}
+                <span className={tone(value - cost)}>{money(value - cost)}</span>
               </>
             ) : undefined
           }

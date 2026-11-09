@@ -4,8 +4,9 @@ import { addEvent, deleteEvent } from "@/app/actions";
 import { ActionForm } from "@/components/ActionForm";
 import { PriceChart, type Bar, type Marker } from "@/components/PriceChart";
 import { FlagTags, Panel, ScoreBreakdown } from "@/components/ui";
-import { HORIZON_LABELS, money, num, pct, timeTaipei, todayTaipei } from "@/lib/format";
-import { flagsOn, latestDate, latestScores, priceHistory, stock, stockEvents, stockGroups, stockNews, stockSignals } from "@/lib/queries";
+import { Updated } from "@/components/Updated";
+import { HORIZON_LABELS, money, num, pct, shortDate, timeTaipei, todayTaipei } from "@/lib/format";
+import { dataUpdates, flagsOn, latestDate, latestScores, priceHistory, stock, stockDataDates, stockEvents, stockGroups, stockNews, stockSignals } from "@/lib/queries";
 import { requireSession } from "@/lib/session";
 
 const STATUS_LABELS: Record<string, string> = { disposition: "處置股", attention: "注意股", full_delivery: "全額交割" };
@@ -17,7 +18,7 @@ export default async function StockPage({ params }: { params: Promise<{ id: stri
   // 基本資料與最新日期互不相依，一起查以減少資料庫往返
   const [s, date] = await Promise.all([stock(id.toUpperCase()), latestDate()]);
   if (!s) notFound();
-  const [prices, signals, scores, news, groups, flags, events] = await Promise.all([
+  const [prices, signals, scores, news, groups, flags, events, dates, upd] = await Promise.all([
     priceHistory(s.stock_id),
     stockSignals(s.stock_id),
     latestScores(s.stock_id),
@@ -25,7 +26,11 @@ export default async function StockPage({ params }: { params: Promise<{ id: stri
     stockGroups(s.stock_id),
     date ? flagsOn(date, [s.stock_id]) : ({} as Awaited<ReturnType<typeof flagsOn>>),
     stockEvents(s.stock_id, todayTaipei()),
+    stockDataDates(s.stock_id),
+    dataUpdates(),
   ]);
+  const today = todayTaipei();
+  const pub = (d: string | null) => (d ? (d > today ? `${shortDate(d)} 起採用` : `${shortDate(d)} 公布`) : "");
   const bars: Bar[] = [...prices].reverse().map((p) => ({
     time: p.date,
     open: p.open ?? p.close,
@@ -90,6 +95,28 @@ export default async function StockPage({ params }: { params: Promise<{ id: stri
             <FlagTags flags={flags[s.stock_id]} />
           </div>
         ) : null}
+        <div className="data-dates" aria-label="資料日期">
+          <span>股價<b>{shortDate(dates.price)}</b></span>
+          <span>本益比<b>{shortDate(dates.valuation)}</b></span>
+          <span>法人<b>{shortDate(dates.institutional)}</b></span>
+          <span>融資券<b>{shortDate(dates.margin)}</b></span>
+          <span>外資持股<b>{shortDate(dates.foreign_holding)}</b></span>
+          <span>
+            大戶持股
+            {dates.major_holder ? <b>{shortDate(dates.major_holder)}</b> : <b className="pending">每週六更新</b>}
+          </span>
+          <span>
+            月營收<b>{dates.month_period ?? "—"}</b>
+            {dates.month_published ? <span className="faint">（{pub(dates.month_published)}）</span> : null}
+          </span>
+          <span>
+            季報<b>{dates.quarter_period ?? "—"}</b>
+            {dates.quarter_published ? <span className="faint">（{pub(dates.quarter_published)}）</span> : null}
+          </span>
+          <span>
+            評分 <Updated at={upd.score} />
+          </span>
+        </div>
       </section>
 
       <Panel
@@ -157,7 +184,7 @@ export default async function StockPage({ params }: { params: Promise<{ id: stri
 
       <div style={{ height: 14 }} />
       <div className="grid two">
-        <Panel title="消息面排雷紀錄" meta={`${news.length} 則`}>
+        <Panel title="消息面排雷紀錄" meta={<>{news.length} 則<span className="sep">｜</span><Updated at={dates.news_checked ?? upd.news} label="判讀" /></>}>
           {news.length ? (
             <div className="table-wrap">
               <table>

@@ -50,3 +50,19 @@ export function timeTaipei(d: Date | string | null | undefined): string {
 
 export const LIGHT_LABELS: Record<string, string> = { bullish: "偏多", neutral: "中性", bearish: "偏空" };
 export const HORIZON_LABELS: Record<string, string> = { short: "短線", long: "中長線" };
+
+/** 2026-11-09 → 11/09。 */
+export function shortDate(d: string | null | undefined): string {
+  return d ? `${d.slice(5, 7)}/${d.slice(8, 10)}` : "—";
+}
+
+/** 距今多久：剛剛、12 分鐘前、3 小時前、2 天前。 */
+export function ago(d: Date | string | null | undefined, now: Date = new Date()): string {
+  if (!d) return "";
+  const mins = Math.floor((now.getTime() - new Date(d).getTime()) / 60000);
+  if (mins < 1) return "剛剛";
+  if (mins < 60) return `${mins} 分鐘前`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours} 小時前`;
+  return `${Math.floor(hours / 24)} 天前`;
+}

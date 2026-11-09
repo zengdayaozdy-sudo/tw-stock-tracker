@@ -1,13 +1,14 @@
 import Link from "next/link";
 import { Change, Panel } from "@/components/ui";
+import { Updated } from "@/components/Updated";
 import { dateLabel, num } from "@/lib/format";
-import { groupsWithMembers, latestDate, market } from "@/lib/queries";
+import { dataUpdates, groupsWithMembers, latestDate, market } from "@/lib/queries";
 import { requireSession } from "@/lib/session";
 
 export default async function GroupsPage() {
   await requireSession();
   const date = await latestDate();
-  const [m, all] = await Promise.all([date ? market(date) : null, groupsWithMembers()]);
+  const [m, all, upd] = await Promise.all([date ? market(date) : null, groupsWithMembers(), dataUpdates()]);
   const strength = m?.groups ?? [];
   const ranked = new Set(strength.map((g) => g.name));
   const others = all.filter((g) => !ranked.has(g.name) && (g.members as string[]).length);
@@ -18,7 +19,7 @@ export default async function GroupsPage() {
       <p className="sub">
         {date ? dateLabel(date) : "尚無資料"}｜綜合近 1／3 個月相對大盤報酬與族群平均分數排名，後段為弱勢族群（不發買進訊號）
       </p>
-      <Panel title="排名" meta={`${strength.filter((g) => g.rank).length} 個族群`}>
+      <Panel title="排名" meta={<>{strength.filter((g) => g.rank).length} 個族群<span className="sep">｜</span><Updated at={upd.filters} /></>}>
         {strength.length ? (
           <div className="table-wrap">
             <table>

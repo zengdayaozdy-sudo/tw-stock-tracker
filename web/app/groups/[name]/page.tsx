@@ -1,7 +1,8 @@
 import { notFound } from "next/navigation";
 import { Change, FlagTags, Panel, StockLink } from "@/components/ui";
+import { Updated } from "@/components/Updated";
 import { dateLabel, num } from "@/lib/format";
-import { flagsOn, groupByName, groupMembers, lastCloses, latestDate, market, scoresOn } from "@/lib/queries";
+import { dataUpdates, flagsOn, groupByName, groupMembers, lastCloses, latestDate, market, scoresOn } from "@/lib/queries";
 import { requireSession } from "@/lib/session";
 
 export default async function GroupPage({ params }: { params: Promise<{ name: string }> }) {
@@ -11,11 +12,12 @@ export default async function GroupPage({ params }: { params: Promise<{ name: st
   if (!group) notFound();
   const members = await groupMembers(group.group_id);
   const ids = members.map((m) => m.stock_id as string);
-  const [m, scores, flags, closes] = await Promise.all([
+  const [m, scores, flags, closes, upd] = await Promise.all([
     date ? market(date) : null,
     date ? scoresOn(date, ids) : [],
     date ? flagsOn(date, ids) : ({} as Awaited<ReturnType<typeof flagsOn>>),
     date ? lastCloses(ids, date) : ({} as Record<string, number>),
+    dataUpdates(),
   ]);
   const strength = m?.groups.find((g) => g.name === name);
   const by = (sid: string, h: string) => scores.find((s) => s.stock_id === sid && s.horizon === h);
@@ -36,6 +38,8 @@ export default async function GroupPage({ params }: { params: Promise<{ name: st
         {strength?.rank ? `｜排名第 ${strength.rank}` : ""}
         {strength?.weak ? "｜弱勢族群" : ""}
         {date ? `｜${dateLabel(date)}` : ""}
+        <span className="sep">｜</span>
+        <Updated at={upd.filters} />
       </p>
       {strength && (
         <section className="panel" style={{ marginBottom: 14 }}>

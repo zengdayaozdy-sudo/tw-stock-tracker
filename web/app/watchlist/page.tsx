@@ -2,8 +2,9 @@ import Link from "next/link";
 import { addGroupMembers, addWatchlist, createGroup, deleteGroup, removeGroupMember, removeWatchlist, renameGroup } from "@/app/actions";
 import { ActionForm } from "@/components/ActionForm";
 import { StockSearch } from "@/components/StockSearch";
-import { num, pct, tone } from "@/lib/format";
-import { type WatchItem, groupsWithMembers, names, runtimeConfig, watchlistDetail } from "@/lib/queries";
+import { Updated } from "@/components/Updated";
+import { num, pct, shortDate, tone } from "@/lib/format";
+import { type WatchItem, dataUpdates, groupsWithMembers, latestDate, names, runtimeConfig, watchlistDetail } from "@/lib/queries";
 import { requireSession } from "@/lib/session";
 
 const STATUS_LABELS: Record<string, string> = { disposition: "處置", attention: "注意", full_delivery: "全額交割" };
@@ -36,7 +37,13 @@ function href(params: { g?: string; sort?: string }) {
 export default async function WatchlistPage({ searchParams }: { searchParams: Promise<{ g?: string; sort?: string }> }) {
   await requireSession();
   const sp = await searchParams;
-  const [list, groups, { config }] = await Promise.all([watchlistDetail(), groupsWithMembers(), runtimeConfig()]);
+  const [list, groups, { config }, upd, date] = await Promise.all([
+    watchlistDetail(),
+    groupsWithMembers(),
+    runtimeConfig(),
+    dataUpdates(),
+    latestDate(),
+  ]);
   const custom = groups.filter((g) => g.kind === "custom");
   const industry = groups.filter((g) => g.kind === "industry" && (g.members as string[]).length);
   const memberNames = await names([...new Set(custom.flatMap((g) => g.members as string[]))]);
@@ -58,6 +65,9 @@ export default async function WatchlistPage({ searchParams }: { searchParams: Pr
           <h1>自選股與族群</h1>
           <p className="sub">
             {config.plan_label}・{limit ? `已使用 ${list.length} / ${limit} 檔` : `全市場模式，自選 ${list.length} 檔`}
+            <span className="sep">｜</span>
+            {date ? `${shortDate(date)} 收盤評分　` : ""}
+            <Updated at={upd.score} />
           </p>
         </div>
         {limit ? (

@@ -1,8 +1,9 @@
 import { recordTrade, updateHoldingLevels } from "@/app/actions";
 import { ActionForm } from "@/components/ActionForm";
 import { Change, Panel, StockLink } from "@/components/ui";
-import { HORIZON_LABELS, money, num, pct, todayTaipei, tone } from "@/lib/format";
-import { holdingsDetail, lastCloses, latestDate, names, priceAdjustments, seriesBetween, setting, signalsOn, trades as loadTrades } from "@/lib/queries";
+import { Updated } from "@/components/Updated";
+import { HORIZON_LABELS, money, num, pct, shortDate, timeTaipei, todayTaipei, tone } from "@/lib/format";
+import { dataUpdates, holdingsDetail, lastCloses, latestDate, names, priceAdjustments, seriesBetween, setting, settingsUpdated, signalsOn, trades as loadTrades } from "@/lib/queries";
 import { requireSession } from "@/lib/session";
 import { adjustPoints, tradeStats, type Trade } from "@/lib/trading";
 
@@ -12,11 +13,13 @@ export default async function PortfolioPage() {
   await requireSession();
   const today = todayTaipei();
   const date = (await latestDate()) ?? today;
-  const [holdings, rows, capital, sells] = await Promise.all([
+  const [holdings, rows, capital, sells, upd, setUpd] = await Promise.all([
     holdingsDetail(date),
     loadTrades(),
     setting<number>("total_capital", 0),
     signalsOn(date, "sell"),
+    dataUpdates(),
+    settingsUpdated(["total_capital"]),
   ]);
   const trades: Trade[] = rows.map((r) => ({
     trade_id: Number(r.trade_id),
@@ -44,7 +47,11 @@ export default async function PortfolioPage() {
     <>
       <h1>持股與交易日誌</h1>
       <p className="sub">
-        總資金 {money(Number(capital))} 元｜持股市值 {money(value)} 元（{pct(capital ? value / Number(capital) : null, 1, false)}）
+        總資金 {money(Number(capital))} 元
+        {setUpd.total_capital ? <span className="faint">（{timeTaipei(setUpd.total_capital)} 修改）</span> : null}
+        ｜持股市值 {money(value)} 元（{pct(capital ? value / Number(capital) : null, 1, false)}）
+        <span className="sep">｜</span>
+        現價為 {shortDate(date)} 收盤
       </p>
 
       <Panel title="登錄交易" meta="手續費、證交稅留空會自動計算；會自動記錄當時的分數與訊號">
@@ -97,7 +104,7 @@ export default async function PortfolioPage() {
       </Panel>
 
       <div style={{ height: 14 }} />
-      <Panel title="目前持股" meta={`${holdings.length} 檔`}>
+      <Panel title="目前持股" meta={<>{holdings.length} 檔<span className="sep">｜</span><Updated at={upd.holdings} label="檢查" /></>}>
         {holdings.length ? (
           <div className="table-wrap">
             <table>
@@ -112,6 +119,7 @@ export default async function PortfolioPage() {
                   <th className="n">最高收盤</th>
                   <th>開倉日</th>
                   <th>停損／停利</th>
+                  <th>最後更新</th>
                   <th>提醒</th>
                 </tr>
               </thead>
@@ -136,6 +144,7 @@ export default async function PortfolioPage() {
                           <input name="take_profit" type="number" step="0.01" defaultValue={h.take_profit ?? ""} className="w-xs" aria-label="停利" placeholder="停利" />
                         </ActionForm>
                       </td>
+                      <td className="num small faint">{timeTaipei(h.updated_at)}</td>
                       <td className="wrap small">{sell ? <span className="up">{sell.reason}</span> : null}</td>
                     </tr>
                   );
@@ -184,6 +193,7 @@ export default async function PortfolioPage() {
                   <th>當時分數</th>
                   <th>對應訊號</th>
                   <th>備註</th>
+                  <th>登錄時間</th>
                 </tr>
               </thead>
               <tbody>
@@ -206,6 +216,7 @@ export default async function PortfolioPage() {
                       </td>
                       <td className="small wrap">{sig ? `${sig.date} ${sig.reason}` : "—"}</td>
                       <td className="small muted">{r.note}</td>
+                      <td className="num small faint">{timeTaipei(r.created_at)}</td>
                     </tr>
                   );
                 })}

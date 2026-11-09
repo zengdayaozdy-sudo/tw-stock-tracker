@@ -47,6 +47,55 @@ export async function setting<T>(key: string, fallback: T): Promise<T> {
   return rows.length ? (rows[0].value as T) : fallback;
 }
 
+/** 設定值的最後修改時間。 */
+export async function settingsUpdated(keys: string[]): Promise<Record<string, Date>> {
+  const rows = await db()`SELECT key, updated_at FROM settings WHERE key = ANY(${keys})`;
+  return Object.fromEntries(rows.map((r) => [r.key as string, r.updated_at as Date]));
+}
+
+/** 各排程步驟最近一次成功完成的時間（資料更新時間）。 */
+export async function dataUpdates(): Promise<Record<string, Date | undefined>> {
+  const rows = await db()`
+    SELECT DISTINCT ON (job) job, coalesce(finished_at, started_at) AS t FROM job_logs
+    WHERE status = 'success' ORDER BY job, started_at DESC`;
+  return Object.fromEntries(rows.map((r) => [r.job as string, r.t as Date]));
+}
+
+export type StockDataDates = {
+  price: string | null;
+  valuation: string | null;
+  institutional: string | null;
+  margin: string | null;
+  foreign_holding: string | null;
+  major_holder: string | null;
+  month_period: string | null;
+  month_published: string | null;
+  quarter_period: string | null;
+  quarter_published: string | null;
+  news_checked: Date | null;
+};
+
+/** 個股各類資料的最新資料日期。 */
+export async function stockDataDates(id: string): Promise<StockDataDates> {
+  const rows = await db()`
+    SELECT
+      (SELECT max(date) FROM daily_prices WHERE stock_id = ${id} AND close IS NOT NULL) AS price,
+      (SELECT max(date) FROM valuations WHERE stock_id = ${id}) AS valuation,
+      (SELECT max(date) FROM chips WHERE stock_id = ${id} AND foreign_net IS NOT NULL) AS institutional,
+      (SELECT max(date) FROM chips WHERE stock_id = ${id} AND margin_balance IS NOT NULL) AS margin,
+      (SELECT max(date) FROM chips WHERE stock_id = ${id} AND foreign_holding_pct IS NOT NULL) AS foreign_holding,
+      (SELECT max(date) FROM chips WHERE stock_id = ${id} AND major_holder_pct IS NOT NULL) AS major_holder,
+      m.period AS month_period, m.published_date AS month_published,
+      q.period AS quarter_period, q.published_date AS quarter_published,
+      (SELECT max(judged_at) FROM news WHERE stock_id = ${id}) AS news_checked
+    FROM (SELECT 1) one
+    LEFT JOIN LATERAL (SELECT period, published_date FROM financials
+      WHERE stock_id = ${id} AND period_type = 'month' ORDER BY period DESC LIMIT 1) m ON true
+    LEFT JOIN LATERAL (SELECT period, published_date FROM financials
+      WHERE stock_id = ${id} AND period_type = 'quarter' ORDER BY period DESC LIMIT 1) q ON true`;
+  return rows[0] as StockDataDates;
+}
+
 export async function runtimeConfig(): Promise<{ config: RuntimeConfig; synced: boolean }> {
   const cfg = await setting<RuntimeConfig | null>("runtime_config", null);
   return { config: cfg ?? DEFAULT_CONFIG, synced: cfg !== null };
@@ -166,6 +215,7 @@ export async function scoresOn(date: string, ids?: string[]): Promise<ScoreRow[]
 export async function holdingsDetail(date: string) {
   return await db()`
     SELECT h.stock_id, s.name, h.shares, h.avg_cost, h.opened_date, h.stop_loss, h.take_profit, h.highest_close,
+      h.updated_at,
       (SELECT close FROM daily_prices p WHERE p.stock_id = h.stock_id AND p.date <= ${date} AND p.close IS NOT NULL
        ORDER BY p.date DESC LIMIT 1) AS close
     FROM holdings h JOIN stocks s USING (stock_id) ORDER BY h.stock_id`;
@@ -198,7 +248,8 @@ export async function latestScores(id: string) {
 
 export async function stockNews(id: string, limit = 30) {
   return await db()`
-    SELECT news_id, published_at, source, title, url, is_major_negative, event_type, confidence, summary, judged_by
+    SELECT news_id, published_at, source, title, url, is_major_negative, event_type, confidence, summary, judged_by,
+      judged_at
     FROM news WHERE stock_id = ${id} ORDER BY published_at DESC LIMIT ${limit}`;
 }
 
@@ -286,7 +337,7 @@ export async function groupMembers(groupId: number) {
 
 export async function trades() {
   return await db()`
-    SELECT trade_id, stock_id, date, side, price, shares, fee, tax, score_snapshot, signal_snapshot, note
+    SELECT trade_id, stock_id, date, side, price, shares, fee, tax, score_snapshot, signal_snapshot, note, created_at
     FROM trades ORDER BY date DESC, trade_id DESC`;
 }
 
