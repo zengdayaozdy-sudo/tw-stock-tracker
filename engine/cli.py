@@ -245,6 +245,13 @@ def cmd_probe(args) -> None:
             url = url.format(date=when.strftime("%Y%m%d"))
             try:
                 payload = http.get_json(url)
+                if isinstance(payload, dict) and isinstance(payload.get("tables"), list):
+                    for t in payload["tables"]:
+                        if t.get("data"):
+                            print(f"\n[{market}.{key}] 表格「{t.get('title')}」筆數={len(t['data'])}")
+                            print("  fields:", t.get("fields"))
+                            print("  sample:", json.dumps(t["data"][0], ensure_ascii=False)[:300])
+                    continue
                 rows = payload if isinstance(payload, list) else payload.get("data") or payload
                 fields = payload.get("fields") if isinstance(payload, dict) else None
                 sample = rows[0] if isinstance(rows, list) and rows else rows
