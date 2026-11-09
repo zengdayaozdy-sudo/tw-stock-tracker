@@ -67,11 +67,18 @@ def test_next_wake_schedule():
     assert _monitor(fri_morning).next_wake(fri_morning) == ("wait", 3600)
     in_session = datetime(2026, 11, 6, 10, 0, tzinfo=TZ)
     assert _monitor(in_session).next_wake(in_session) == ("check", 0)
-    after_close = datetime(2026, 11, 6, 14, 0, tzinfo=TZ)   # 週五收盤後 → 下週一 09:00
+    after_close = datetime(2026, 11, 6, 14, 0, tzinfo=TZ)   # 收盤後先等到 17:30 檢查收盤後排程
     state, wait = _monitor(after_close).next_wake(after_close)
-    assert state == "wait" and wait == (datetime(2026, 11, 9, 9, 0, tzinfo=TZ) - after_close).total_seconds()
-    m = _monitor(after_close, holidays={date(2026, 11, 9)})  # 週一休市 → 週二
-    assert m.next_wake(after_close)[1] == (datetime(2026, 11, 10, 9, 0, tzinfo=TZ) - after_close).total_seconds()
+    assert state == "wait" and wait == 3.5 * 3600
+    evening = datetime(2026, 11, 6, 18, 0, tzinfo=TZ)
+    m = _monitor(evening)
+    assert m.next_wake(evening) == ("schedule", 0)
+    m._schedule_checked = evening.date()                     # 檢查過後 → 下週一 09:00
+    state, wait = m.next_wake(evening)
+    assert state == "wait" and wait == (datetime(2026, 11, 9, 9, 0, tzinfo=TZ) - evening).total_seconds()
+    m = _monitor(evening, holidays={date(2026, 11, 9)})      # 週一休市 → 週二
+    m._schedule_checked = evening.date()
+    assert m.next_wake(evening)[1] == (datetime(2026, 11, 10, 9, 0, tzinfo=TZ) - evening).total_seconds()
     sat = datetime(2026, 11, 7, 10, 0, tzinfo=TZ)
     assert _monitor(sat).next_wake(sat)[0] == "wait"
 
@@ -117,3 +124,14 @@ def test_load_dotenv(tmp_path, monkeypatch):
 @pytest.fixture(autouse=True)
 def _no_caffeinate(monkeypatch):
     monkeypatch.setattr("engine.monitor.runner.subprocess.Popen", lambda *a, **k: None)
+
+
+def test_tdcc_distribution():
+    from engine.sources.tdcc import parse_distribution
+
+    text = "\ufeff資料日期,證券代號,持股分級,人數,股數,占集保庫存數比例%\n" + "\n".join(
+        [f"20261106,2330  ,{lvl},1,1,{pct}" for lvl, pct in [(1, 1.22), (11, 1.43), (12, 1.08), (13, 0.92),
+                                                             (14, 0.75), (15, 84.24), (16, 0.0), (17, 100.0)]]
+        + ["20261106,000218,15,1,1,100.00", "20261106,0050  ,15,1,1,90.00"])
+    rows = parse_distribution(text, 12)
+    assert rows == [{"stock_id": "2330", "date": date(2026, 11, 6), "major_holder_pct": 86.99}]

@@ -57,20 +57,100 @@ def cmd_migrate(_args) -> None:
 
 
 def cmd_fetch(args) -> None:
+    import time
+
     from engine.joblog import job_run
     from engine.pipeline import fetch_daily
 
     trade_date = _parse_date(args.date)
     settings, conn, repo, exchange, finmind = _services()
+    waited = 0
     with job_run(conn, "fetch", trade_date) as run:
         result = fetch_daily(settings, repo, exchange, finmind, trade_date)
-        run.note(**result.to_dict())
+        # 交易日但官方資料尚未更新：每 10 分鐘重試，最多等 --wait-minutes 分鐘
+        while not result.market_open and waited < args.wait_minutes and _is_trading_day(exchange, trade_date):
+            logging.info("官方資料尚未更新（最新 %s），10 分鐘後重試", result.counts.get("latest_available"))
+            time.sleep(600)
+            waited += 10
+            result = fetch_daily(settings, repo, exchange, finmind, trade_date)
+        run.note(**result.to_dict(), waited_minutes=waited)
         if not result.market_open:
-            run.skip("休市或官方資料尚未更新")
+            run.skip("休市" if not _is_trading_day(exchange, trade_date) else "官方資料尚未更新")
     print(json.dumps(result.to_dict(), ensure_ascii=False, indent=2))
     if result.market_open and not result.quality.ok:
         # 交給後續步驟：資料不完整時暫停訊號並推播警告（第 6 階段接上 LINE）
         raise SystemExit(2)
+
+
+def _is_trading_day(exchange, d: date) -> bool:
+    if d.weekday() >= 5:
+        return False
+    try:
+        return d not in exchange.holidays()
+    except Exception:  # 休市日抓不到時只排除週末
+        return True
+
+
+def cmd_trading_day(args) -> None:
+    """判斷是否為交易日；在 GitHub Actions 中寫入 open=true/false 供後續步驟判斷。"""
+    import os
+
+    from engine.sources.common import HttpClient
+    from engine.sources.exchanges import ExchangeClient
+
+    settings = load_settings()
+    d = _parse_date(args.date)
+    is_open = _is_trading_day(ExchangeClient(settings, HttpClient.from_settings(settings.sources["http"])), d)
+    print(f"{d}：{'交易日' if is_open else '休市'}")
+    if not is_open and os.environ.get("DATABASE_URL"):
+        # 留下休市紀錄：系統警告以「前一個平日有沒有任何紀錄」判斷排程是否執行
+        from engine.db import connect
+        from engine.joblog import job_run
+
+        conn = connect()
+        with job_run(conn, "fetch", d) as run:
+            run.skip("休市")
+        conn.close()
+    out = os.environ.get("GITHUB_OUTPUT")
+    if out:
+        with open(out, "a", encoding="utf-8") as f:
+            f.write(f"open={'true' if is_open else 'false'}\n")
+
+
+def cmd_holders(_args) -> None:
+    """集保股權分散表（每週）：大戶持股比例寫入 chips.major_holder_pct。"""
+    from engine.joblog import job_run
+    from engine.sources.tdcc import parse_distribution
+
+    settings, conn, repo, exchange, _finmind = _services()
+    cfg = settings.sources["tdcc"]
+    with job_run(conn, "holders", _parse_date(None)) as run:
+        rows = parse_distribution(exchange.http.get_text(cfg["holding_distribution"]), cfg["major_holder_min_level"])
+        known = repo.known_stock_ids()
+        rows = [r for r in rows if r["stock_id"] in known]
+        n = repo.upsert_chips(rows)
+        run.note(rows=n, date=str(rows[0]["date"]) if rows else None)
+    print(f"已更新 {n} 檔大戶持股比例（{rows[0]['date'] if rows else '無資料'}）")
+
+
+def cmd_maintenance(args) -> None:
+    """清理過舊的紀錄，控制 Neon 免費方案容量。"""
+    from engine.db import connect
+
+    conn = connect()
+    rules = [
+        ("盤中心跳", "DELETE FROM job_logs WHERE status = 'heartbeat' AND started_at < now() - interval '30 days'"),
+        ("排程紀錄", "DELETE FROM job_logs WHERE status <> 'heartbeat' AND started_at < now() - make_interval(days => %s)"),
+        ("API 用量", "DELETE FROM api_usage WHERE hour < now() - interval '90 days'"),
+        ("新聞", "DELETE FROM news WHERE published_at < now() - make_interval(days => %s)"),
+        ("濾網旗標", "DELETE FROM screen_flags WHERE date < current_date - make_interval(days => %s)"),
+    ]
+    params = {"排程紀錄": (args.keep_days,), "新聞": (args.keep_days * 2,), "濾網旗標": (args.keep_days,)}
+    with conn.cursor() as cur:
+        for label, sql in rules:
+            cur.execute(sql, params.get(label))
+            print(f"{label}：刪除 {cur.rowcount} 筆")
+    conn.commit()
 
 
 def cmd_backfill(args) -> None:
@@ -341,7 +421,7 @@ def cmd_alert(args) -> None:
     conn = connect()
     line = LineClient.from_env(settings.notify["line"])
     with job_run(conn, "alert", as_of) as run:
-        result = send_alerts(settings, Repository(conn), line, as_of)
+        result = send_alerts(settings, Repository(conn), line, as_of, extra=args.message)
         run.note(**result)
     print("系統警告：" + ("；".join(result["alerts"]) or "無"))
 
@@ -565,6 +645,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser("fetch", help="抓取當日資料並做完整性檢查")
     p.add_argument("--date")
+    p.add_argument("--wait-minutes", type=int, default=0, help="交易日但官方資料尚未更新時，最多等待幾分鐘")
     p.set_defaults(func=cmd_fetch)
 
     p = sub.add_parser("backfill", help="回補自選股歷史資料（使用 FinMind 額度）")
@@ -611,6 +692,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser("alert", help="只檢查並推播系統警告")
     p.add_argument("--date")
+    p.add_argument("--message", help="額外加在警告最前面的訊息（例如每週維護失敗）")
     p.set_defaults(func=cmd_alert)
 
     p = sub.add_parser("holdings", help="每日持股檢查（停損、移動停利、分數、持有過久）")
@@ -657,6 +739,16 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("backtest-data", help="抓取回測所需的大盤長期歷史")
     p.add_argument("--years", type=int, default=5)
     p.set_defaults(func=cmd_backtest_data)
+
+    p = sub.add_parser("trading-day", help="判斷是否為交易日（排程用）")
+    p.add_argument("--date")
+    p.set_defaults(func=cmd_trading_day)
+
+    sub.add_parser("holders", help="集保股權分散表：大戶持股比例（每週）").set_defaults(func=cmd_holders)
+
+    p = sub.add_parser("maintenance", help="清理過舊的排程紀錄、心跳、新聞")
+    p.add_argument("--keep-days", type=int, default=180)
+    p.set_defaults(func=cmd_maintenance)
 
     p = sub.add_parser("monitor", help="盤中停損監控常駐程式（交易時間每隔數分鐘檢查持股）")
     p.add_argument("--once", action="store_true", help="立即檢查一次就結束（不論是否在交易時間）")

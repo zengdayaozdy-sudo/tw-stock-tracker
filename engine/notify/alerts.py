@@ -13,6 +13,7 @@ from engine.repository import Repository
 STEP_LABELS = {
     "fetch": "資料抓取", "liquidity": "流動性過濾", "news": "消息面排雷", "score": "評分",
     "filters": "濾網", "signals": "買進訊號", "notify": "LINE 報告", "backfill": "歷史回補",
+    "holdings": "持股檢查", "holders": "股權分散表",
 }
 MONITOR_JOB = "monitor_heartbeat"
 MARKET_CLOSE = time(13, 30)
@@ -32,8 +33,11 @@ def collect_alerts(settings: Settings, repo: Repository, as_of: date, now: datet
     fetch = jobs.get("fetch")
     market_open = True
 
-    if fetch is None:
+    weekend = as_of.weekday() >= 5
+    if fetch is None and not weekend:
         alerts.append(f"排程未執行：{as_of} 尚未抓取資料")
+    elif fetch is None:
+        market_open = False
     elif fetch["status"] == "skipped":
         market_open = False
     elif fetch["status"] == "failed":
@@ -54,7 +58,7 @@ def collect_alerts(settings: Settings, repo: Repository, as_of: date, now: datet
 
     # 前一個平日完全沒有執行紀錄＝排程沒跑（休市日也會留下 skipped 紀錄）
     prev = previous_weekday(as_of)
-    if not repo.jobs_on(prev):
+    if not weekend and not repo.jobs_on(prev):
         alerts.append(f"排程未執行：前一個交易日 {prev} 沒有任何執行紀錄")
 
     # FinMind 額度：某小時用量達到預算上限（程式會暫停等待，但代表額度吃緊）

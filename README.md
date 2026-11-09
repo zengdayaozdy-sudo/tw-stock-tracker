@@ -1,6 +1,6 @@
 # 台股自選股評分追蹤程式
 
-個人自用的台股選股與追蹤程式。完整規格見 [CLAUDE.md](CLAUDE.md)。
+個人自用的台股選股與追蹤程式。完整規格見 [CLAUDE.md](CLAUDE.md)，安裝、補跑、常見錯誤見 [docs/runbook.md](docs/runbook.md)。
 
 ## 快速開始
 
@@ -38,7 +38,7 @@ python -m engine.cli alert        # 只檢查並推播系統警告（排程任�
 - [x] 8. 盤中停損監控（常駐在擁有者的 Mac）
 - [x] 9. 個人網站（Next.js，密碼保護）
 - [x] 10. 回測（backtrader，調參／保留驗證區間）
-- [ ] 11. 排程與維運文件
+- [x] 11. 排程與維運文件（[docs/runbook.md](docs/runbook.md)）
 
 ## 已完成的前置設定
 
@@ -132,7 +132,7 @@ python -m engine.cli monitor --once  # 先手動檢查一次確認設定正確
 ## 交給 Claude Code 接手
 
 1. 用 Claude Code 開啟本 repo
-2. 指示：「讀 CLAUDE.md、README.md、docs/open-questions.md，從第 14 節第 11 階段開始開發」
+2. 第 14 節的 11 個階段已全部完成；後續調整先讀 CLAUDE.md、README.md、docs/runbook.md、docs/open-questions.md、docs/decisions.md
 3. 消息面判讀目前用關鍵字（排程預設 `AI_PROVIDER=rules`）；要改用 Claude，在 GitHub Variables 設 `AI_PROVIDER=claude` 並加 `ANTHROPIC_API_KEY` Secret（見 docs/open-questions.md #13）
 4. 第 6 階段（LINE）前，擁有者需在 GitHub Secrets 加上 `LINE_CHANNEL_ACCESS_TOKEN`、`LINE_OWNER_USER_ID`
 5. 第 9 階段（網站）前，在 Vercel 匯入本 repo，Root Directory 設為 `web`，並設定 `DATABASE_URL`、`SITE_PASSWORD`、`SESSION_SECRET`

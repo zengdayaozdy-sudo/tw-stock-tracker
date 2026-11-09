@@ -71,9 +71,10 @@ tpex:
     shareholder_meetings: https://www.tpex.org.tw/openapi/v1/t187ap41_O
 
 tdcc:
-  verified: false
+  verified: true   # 2026-11-09 實測：CSV，約 7 萬列，只有最新一週
   # 集保股權分散表（每週），免費模式用
   holding_distribution: https://opendata.tdcc.com.tw/getOD.ashx?id=1-5
+  major_holder_min_level: 12   # 分級 12（400,001 股以上＝400 張以上）到 15 視為大戶
 
 ai:
   ollama_timeout_seconds: 120

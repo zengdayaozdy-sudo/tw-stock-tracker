@@ -2,7 +2,9 @@ name: 每日收盤後批次
 
 on:
   schedule:
-    # 台灣時間週一至週五 15:30（UTC 07:30）；GitHub 排程可能延遲數分鐘到數十分鐘
+    # 台灣時間（UTC+8）週一至週五 15:30 ＝ UTC 07:30。
+    # GitHub 排程可能延遲數分鐘到數十分鐘；官方資料未更新時 fetch 最多再等 90 分鐘。
+    # 休市日由 trading-day 步驟判斷後略過後續步驟。
     - cron: "30 7 * * 1-5"
   workflow_dispatch:
     inputs:
@@ -17,7 +19,7 @@ concurrency:
 jobs:
   daily:
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 180
     env:
       PLAN: ${{ vars.PLAN || 'free' }}
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
@@ -31,34 +33,48 @@ jobs:
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
       SITE_URL: ${{ vars.SITE_URL }}
       TZ: Asia/Taipei
+      DATE_ARG: ${{ inputs.date && format('--date {0}', inputs.date) || '' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+          cache: pip
       - run: pip install -e ".[claude]"
       - name: 套用資料庫結構
         run: python -m engine.cli migrate
       - name: 同步網站設定
         run: python -m engine.cli sync-config
+      - name: 判斷是否為交易日
+        id: day
+        run: python -m engine.cli trading-day $DATE_ARG
       - name: 抓取資料與完整性檢查
-        run: python -m engine.cli fetch ${{ inputs.date && format('--date {0}', inputs.date) || '' }}
+        if: steps.day.outputs.open == 'true'
+        run: python -m engine.cli fetch $DATE_ARG --wait-minutes ${{ inputs.date && '0' || '90' }}
       - name: 回補新加入的自選股
+        if: steps.day.outputs.open == 'true'
         run: python -m engine.cli backfill-new
       - name: 流動性過濾
-        run: python -m engine.cli liquidity ${{ inputs.date && format('--date {0}', inputs.date) || '' }}
+        if: steps.day.outputs.open == 'true'
+        run: python -m engine.cli liquidity $DATE_ARG
       - name: 消息面排雷
-        run: python -m engine.cli news ${{ inputs.date && format('--date {0}', inputs.date) || '' }}
+        if: steps.day.outputs.open == 'true'
+        run: python -m engine.cli news $DATE_ARG
       - name: 三面向評分
-        run: python -m engine.cli score ${{ inputs.date && format('--date {0}', inputs.date) || '' }}
+        if: steps.day.outputs.open == 'true'
+        run: python -m engine.cli score $DATE_ARG
       - name: 大盤燈號、族群強弱、事件行事曆
-        run: python -m engine.cli filters ${{ inputs.date && format('--date {0}', inputs.date) || '' }}
+        if: steps.day.outputs.open == 'true'
+        run: python -m engine.cli filters $DATE_ARG
       - name: 買進訊號與參考價位
-        run: python -m engine.cli signals ${{ inputs.date && format('--date {0}', inputs.date) || '' }}
+        if: steps.day.outputs.open == 'true'
+        run: python -m engine.cli signals $DATE_ARG
       - name: 持股檢查與賣出提醒
-        run: python -m engine.cli holdings ${{ inputs.date && format('--date {0}', inputs.date) || '' }}
+        if: steps.day.outputs.open == 'true'
+        run: python -m engine.cli holdings $DATE_ARG
       - name: LINE 每日報告
-        run: python -m engine.cli notify ${{ inputs.date && format('--date {0}', inputs.date) || '' }}
+        if: steps.day.outputs.open == 'true'
+        run: python -m engine.cli notify $DATE_ARG
       - name: 失敗時推播系統警告
         if: failure()
-        run: python -m engine.cli alert ${{ inputs.date && format('--date {0}', inputs.date) || '' }}
+        run: python -m engine.cli alert $DATE_ARG

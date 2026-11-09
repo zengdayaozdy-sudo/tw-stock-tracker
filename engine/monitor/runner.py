@@ -118,6 +118,7 @@ class Monitor:
         self._holiday_year: int | None = None
         self._errors = 0
         self._awake_until: datetime | None = None
+        self._schedule_checked: date | None = None
 
     def is_trading_day(self, d: date) -> bool:
         if d.weekday() >= 5:
@@ -131,10 +132,17 @@ class Monitor:
         return d not in self._holidays
 
     def next_wake(self, now: datetime) -> tuple[str, float]:
-        """回傳 (狀態, 需要等待的秒數)。狀態：check 立即檢查／wait 等待。"""
+        """回傳 (狀態, 需要等待的秒數)。狀態：check 盤中檢查／schedule 檢查收盤後排程／wait 等待。"""
         start, end = _clock(self.cfg["start"]), _clock(self.cfg["end"])
-        if self.is_trading_day(now.date()) and start <= now.time() <= end:
+        today = now.date()
+        if self.is_trading_day(today) and start <= now.time() <= end:
             return "check", 0
+        sched = self.cfg.get("schedule_check")
+        if sched and self.is_trading_day(today) and self._schedule_checked != today and now.time() > end:
+            target = datetime.combine(today, _clock(sched), tzinfo=TZ)
+            if now >= target:
+                return "schedule", 0
+            return "wait", max(1.0, (target - now).total_seconds())
         d = now.date()
         if self.is_trading_day(d) and now.time() < start:
             target = datetime.combine(d, start, tzinfo=TZ)
@@ -151,6 +159,8 @@ class Monitor:
         state, wait = self.next_wake(now)
         if state == "wait":
             return min(wait, 3600)  # 最多睡一小時就醒來重新判斷（避免睡眠中時鐘跳動）
+        if state == "schedule":
+            return self._check_schedule(now)
         self._keep_awake(now)
         conn = None
         try:
@@ -169,6 +179,33 @@ class Monitor:
             self._errors += 1
             log.error("盤中監控第 %d 次失敗，%d 秒後重試：%s", self._errors, wait, e)
             return wait
+        finally:
+            if conn is not None:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+
+    def _check_schedule(self, now: datetime) -> float:
+        """收盤後排程（GitHub Actions）到了這個時間還沒有任何抓取紀錄 → 推播警告（同一天一次）。"""
+        conn = None
+        try:
+            conn = self.connect()
+            repo = Repository(conn)
+            today = now.date()
+            if repo.latest_job("fetch", today) is None and "SCHEDULE" not in alerted_today(repo, today):
+                prefs = {"system_alerts": True, **(repo.setting("notify", {}) or {})}
+                msg = (f"【系統警告】{today:%Y/%m/%d}\n・排程未執行：{self.cfg['schedule_check']} 仍沒有收盤後批次紀錄，"
+                       "請到 GitHub Actions 確認每日排程是否啟用，或手動執行一次")
+                sent = self.line.push_texts([msg]) if prefs["system_alerts"] else 0
+                record_alert(repo, today, {"stock_id": "SCHEDULE", "pushed": bool(sent)})
+                conn.commit()
+                log.warning("收盤後排程未執行，已推播警告")
+            self._schedule_checked = today
+            return 60
+        except Exception as e:
+            log.error("檢查收盤後排程失敗：%s", e)
+            return 300
         finally:
             if conn is not None:
                 try:

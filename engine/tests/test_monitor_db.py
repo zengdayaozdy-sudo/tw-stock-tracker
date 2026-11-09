@@ -97,3 +97,23 @@ def test_tick_writes_heartbeat(repo, database_url):
     repo.conn.commit()
     alerts = collect_alerts(SETTINGS, repo, date(2026, 11, 9), datetime(2026, 11, 9, 16, 0, tzinfo=TZ))
     assert alerts == ["盤中停損監控可能已停止：最後心跳 11/09 10:03"]
+
+
+def test_schedule_check_alerts_once(repo, database_url):
+    line, sent = _line()
+    evening = datetime(2026, 11, 9, 17, 35, tzinfo=TZ)
+    m = Monitor(SETTINGS, lambda: psycopg.connect(database_url), FakeQuotes({}), line, lambda: set(),
+                clock=lambda: evening, sleep=lambda s: None)
+    m.tick()
+    assert len(sent) == 1 and "排程未執行" in sent[0]["messages"][0]["text"]
+    m._schedule_checked = None                     # 程式重啟後同一天不重複推播
+    m.tick()
+    assert len(sent) == 1
+    with repo.conn.cursor() as cur:                # 有抓取紀錄就不警告
+        cur.execute("INSERT INTO job_logs (job, run_date, status) VALUES ('fetch', '2026-11-10', 'success')")
+    repo.conn.commit()
+    later = datetime(2026, 11, 10, 17, 35, tzinfo=TZ)
+    m2 = Monitor(SETTINGS, lambda: psycopg.connect(database_url), FakeQuotes({}), line, lambda: set(),
+                 clock=lambda: later, sleep=lambda s: None)
+    m2.tick()
+    assert len(sent) == 1

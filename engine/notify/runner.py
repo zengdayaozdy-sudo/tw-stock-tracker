@@ -24,8 +24,10 @@ def _prefs(repo: Repository) -> dict[str, bool]:
 
 
 def send_alerts(settings: Settings, repo: Repository, line: LineClient, as_of: date,
-                now: datetime | None = None) -> dict[str, Any]:
+                now: datetime | None = None, extra: str | None = None) -> dict[str, Any]:
     alerts = collect_alerts(settings, repo, as_of, now)
+    if extra:
+        alerts.insert(0, extra)
     new = [a for a in alerts if a not in repo.alerts_sent(as_of)]
     out: dict[str, Any] = {"alerts": alerts, "alerts_sent": []}
     if not new:

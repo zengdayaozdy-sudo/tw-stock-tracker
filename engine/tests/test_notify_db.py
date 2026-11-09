@@ -134,3 +134,8 @@ def test_holiday_and_preferences(repo):
     result = run_notify(settings, repo, line, AS_OF, now=AFTER_CLOSE)
     assert result["skipped"] == "系統警告通知已關閉" and result["report_skipped"] == "每日報告通知已關閉"
     assert sent == []
+
+
+def test_weekend_has_no_schedule_alerts(repo):
+    sat = date(2026, 11, 7)
+    assert collect_alerts(load_settings("free"), repo, sat, datetime(2026, 11, 7, 12, 0, tzinfo=TZ)) == []

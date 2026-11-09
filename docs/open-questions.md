@@ -7,7 +7,7 @@
 | 1 | 券商分點 `TaiwanStockTradingDailyReport`：官方文件標示單檔查詢需 Sponsor，全市場一次查詢需 Sponsor Pro | 已確認（2026-11-07 FinMind Chip 文件），plans.yaml 目前只放在 pro，若只需自選股可改放 sponsor |
 | 2 | FinMind 即時報價屬於哪個方案、端點為何 | 待確認；確認前付費模式盤中也使用證交所即時行情 |
 | 3 | FinMind 額度：有 token 每小時 600 次、無 token 300 次；付費方案上限待確認 | 免費額度已確認，sources.yaml 付費上限暫填 6000 |
-| 4 | 股權分散表 `TaiwanStockHoldingSharesPer` 需付費；免費模式改用集保公開資料 | 已確認，集保端點待第 3 階段實作並實測 |
+| 4 | 股權分散表 `TaiwanStockHoldingSharesPer` 需付費；免費模式改用集保公開資料 | 已實作（2026-11-09 實測集保 CSV，每週六 holders 更新；歷史需累積數月後大戶指標才會脫離中性分） |
 | 5 | 全市場不帶 data_id 的一次查詢（法人、融資券、外資持股）需 backer／sponsor | 已確認，免費模式改用證交所／櫃買公開資料 |
 | 6 | 證交所／櫃買 OpenAPI 端點與欄位名稱 | 已確認：2026-11-06 實際抓取，上市 1,083 檔、上櫃 802 檔三大法人與融資券欄位皆正確 |
 | 7 | 產業別是代碼 | 已處理：config/industries.yaml 對照表，查無代碼時顯示代碼 |
