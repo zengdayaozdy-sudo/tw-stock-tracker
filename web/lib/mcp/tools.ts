@@ -79,7 +79,7 @@ export function registerTools(server: McpServer) {
     {
       title: "每日總覽",
       description:
-        "取得指定交易日的總覽：大盤多空燈號與各輸入依據、族群強弱排名、買進訊號（含參考買進區間、停損、停利、建議張數）、持股賣出提醒、目前持股損益、資料完整性與排程狀態。想知道「今天有什麼訊號」「大盤怎麼樣」時先呼叫這個。",
+        "取得指定交易日的總覽：大盤多空燈號與各輸入依據、反彈偵測、族群強弱排名、醞釀名單（轉強價、買進區間、停損、目標價）、買進訊號（含參考買進區間、停損、停利、建議張數）、持股賣出提醒、目前持股損益、資料完整性與排程狀態。想知道「今天有什麼訊號」「大盤怎麼樣」時先呼叫這個。",
       inputSchema: z.object({ date: DATE.optional() }),
       annotations: READ,
     },
@@ -115,6 +115,7 @@ export function registerTools(server: McpServer) {
         buy_signals: await withNames(plain(buys)),
         sell_alerts: await withNames(plain(sells)),
         blocked_by_filters: signalJob?.detail?.blocked ?? [],
+        setup_watch: signalJob?.detail?.setups ?? [],
         holdings: plain(holdings).map((h) => ({
           ...h,
           pnl: h.close != null ? Math.round((h.close - h.avg_cost) * h.shares) : null,

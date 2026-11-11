@@ -112,6 +112,7 @@ def run_study(frames: dict, start: date, end: date, risk: dict) -> dict[str, Any
         "對照組：跌深、沒有強勢跡象": [e for e in events if not e["signs"]],
         "醞釀名單：1 項以上": [e for e in events if len(e["signs"]) >= 1],
         "醞釀名單：2 項以上": [e for e in events if len(e["signs"]) >= 2],
+        "醞釀名單：抗跌或 2 項以上": [e for e in events if "rs_up" in e["signs"] or len(e["signs"]) >= 2],
     }
     for k, label in SIGN_LABELS.items():
         groups[f"含「{label}」"] = [e for e in events if k in e["signs"]]

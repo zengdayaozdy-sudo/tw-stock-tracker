@@ -55,6 +55,7 @@ def report_data(settings: Settings, repo: Repository, as_of: date) -> dict[str, 
         "signal_status": signal_job[0] if signal_job else None,
         "signal_reason": (signal_job[1].get("reason") if signal_job else None),
         "blocked": (signal_job[1].get("blocked") if signal_job else None) or [],
+        "setups": (signal_job[1].get("setups") if signal_job else None) or [],
         "holdings": repo.holdings_detail(as_of),
         "quality_ok": quality.get("ok"),
         "quality_warnings": len(quality.get("warnings") or []),
@@ -179,10 +180,34 @@ def _signals_blocks(d: dict, compact: bool, max_blocked: int) -> list[str]:
         lines = ["觸發進場條件但未發訊號："]
         for b in d["blocked"][:max_blocked]:
             lines.append(f"・{b['stock_id']} {b.get('name') or ''}：{'、'.join(b['reasons'])}")
+            if b.get("entry_high") and not compact:
+                lines.append(f"  {'、'.join(b.get('triggers') or [])}")
+                lines.append(f"  買進 {_num(b['entry_low'])}–{_num(b['entry_high'])}｜停損 {_num(b['stop_loss'])}"
+                             f"｜目標 {_num(b['take_profit'])}｜成立時 {b.get('suggested_lots', 0)} 張")
         if len(d["blocked"]) > max_blocked:
             lines.append(f"・另有 {len(d['blocked']) - max_blocked} 檔")
         blocks.append("\n".join(lines))
     return blocks
+
+
+def _setups_block(d: dict, compact: bool) -> str | None:
+    items = d.get("setups") or []
+    if not items:
+        return None
+    lines = ["【醞釀名單】跌深＋強勢跡象，隔天收盤站上轉強價才成立（非買進訊號）"]
+    for x in items:
+        if compact:
+            lines.append(f"{x['stock_id']} {x.get('name') or ''}｜轉強 {_num(x['trigger_price'])}"
+                         f"｜損 {_num(x['stop_loss'])}｜標 {_num(x['take_profit'])}")
+            continue
+        lines.append(f"{x['stock_id']} {x.get('name') or ''}｜收盤 {_num(x['close'])}｜{'、'.join(x['sign_text'])}")
+        lines.append(f"  轉強價 {_num(x['trigger_price'])}｜買進 {_num(x['entry_low'])}–{_num(x['entry_high'])}"
+                     f"｜停損 {_num(x['stop_loss'])}｜目標 {_num(x['take_profit'])}（{x['target_basis']}）")
+        lots = f"{x['suggested_lots']} 張" if x.get("suggested_lots") else (
+            f"零股 {x['odd_shares']:,} 股" if x.get("odd_shares") else "0 張")
+        lines.append(f"  成立時建議 {lots}" + (f"（部位 ×{x['size_factor']:g}）" if x.get("size_factor", 1) < 1 else "")
+                     + "".join(f"｜{n}" for n in x.get("notes") or []))
+    return "\n".join(lines)
 
 
 def _holdings_block(d: dict) -> str | None:
@@ -222,6 +247,9 @@ def render_blocks(d: dict, compact: bool = False, max_blocked: int = 10, site_ur
     if groups:
         blocks.append(groups)
     blocks += _signals_blocks(d, compact, max_blocked)
+    setups = _setups_block(d, compact)
+    if setups:
+        blocks.append(setups)
     holdings = _holdings_block(d)
     if holdings:
         blocks.append(holdings)

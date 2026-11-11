@@ -495,7 +495,8 @@ def cmd_signals(args) -> None:
     with job_run(conn, "signals", as_of) as run:
         result = run_signals(settings, Repository(conn), as_of, force=args.force)
         run.note(status=result["status"], reason=result["reason"], candidates=result.get("candidates", 0),
-                 signals=len(result["signals"]), blocked=result["blocked"])
+                 signals=len(result["signals"]), blocked=result["blocked"], setups=result.get("setups", []),
+                 regime=result.get("regime"), rebound=result.get("rebound"))
         if result["status"] in ("halted", "closed"):
             run.skip(result["reason"])
     if result["status"] == "closed":
@@ -518,6 +519,12 @@ def cmd_signals(args) -> None:
             print(f"    提示：{w}")
     for b in result["blocked"]:
         print(f"  {b['stock_id']} 觸發{'、'.join(b['triggers'])}但未發訊號：{'、'.join(b['reasons'])}")
+        if b.get("entry_high"):
+            print(f"    參考：買進 {b['entry_low']:g}–{b['entry_high']:g}  停損 {b['stop_loss']:g}  "
+                  f"目標 {b['take_profit']:g}  成立時 {b['suggested_lots']} 張")
+    for x in result.get("setups", []):
+        print(f"  醞釀 {x['stock_id']} {x['name'] or ''}：{'、'.join(x['sign_text'])}｜轉強價 {x['trigger_price']:g}  "
+              f"買進 {x['entry_low']:g}–{x['entry_high']:g}  停損 {x['stop_loss']:g}  目標 {x['take_profit']:g}")
 
 
 def cmd_notify(args) -> None:

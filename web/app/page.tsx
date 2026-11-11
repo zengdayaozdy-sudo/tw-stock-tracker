@@ -8,6 +8,75 @@ import { dataUpdates, holdingsDetail, lastHeartbeat, latestDate, latestJob, mark
 import { requireSession } from "@/lib/session";
 import { goToStock } from "./actions";
 
+type WatchItem = {
+  stock_id: string;
+  name?: string;
+  reasons: string[];
+  triggers?: string[];
+  sign_text?: string[];
+  notes?: string[];
+  close?: number;
+  trigger_price?: number;
+  entry_low?: number;
+  entry_high?: number;
+  stop_loss?: number;
+  take_profit?: number;
+  target_basis?: string;
+  suggested_lots?: number;
+  odd_shares?: number;
+  size_factor?: number;
+};
+
+function WatchTable({ items, kind }: { items: WatchItem[]; kind: "observe" | "setup" }) {
+  return (
+    <div className="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>{kind === "setup" ? "醞釀中" : "反彈觀察"}</th>
+            <th className="n">收盤</th>
+            {kind === "setup" && <th className="n">轉強價</th>}
+            <th className="n">買進區間</th>
+            <th className="n">停損</th>
+            <th className="n">目標</th>
+            <th className="n">成立時</th>
+            <th>{kind === "setup" ? "強勢跡象" : "觸發與狀態"}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {items.map((x) => (
+            <tr key={x.stock_id}>
+              <td>
+                <StockLink id={x.stock_id} name={x.name} />
+              </td>
+              <td className="n">{num(x.close)}</td>
+              {kind === "setup" && <td className="n">{num(x.trigger_price)}</td>}
+              <td className="n">
+                {num(x.entry_low)}–{num(x.entry_high)}
+              </td>
+              <td className="n down">{num(x.stop_loss)}</td>
+              <td className="n up">{num(x.take_profit)}</td>
+              <td className="n">
+                {x.suggested_lots ? `${x.suggested_lots} 張` : x.odd_shares ? `零股 ${x.odd_shares}` : "0 張"}
+                {x.size_factor != null && x.size_factor < 1 && <div className="small muted">部位 ×{x.size_factor}</div>}
+              </td>
+              <td className="wrap">
+                <div>{(kind === "setup" ? x.sign_text : x.triggers)?.join("、")}</div>
+                <div className="small muted">
+                  {(kind === "setup"
+                    ? [...(x.notes ?? []), ...(x.target_basis ? [`目標：${x.target_basis}`] : [])]
+                    : x.reasons
+                  ).join("、")}
+                </div>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 function latest(...dates: (Date | undefined)[]): Date | undefined {
   return dates.filter((d): d is Date => !!d).sort((a, b) => +new Date(b) - +new Date(a))[0];
 }
@@ -36,7 +105,8 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
     dataUpdates(),
   ]);
   const ranked = (m?.groups ?? []).filter((g) => g.rank);
-  const blocked: { stock_id: string; name?: string; reasons: string[]; triggers: string[] }[] = signalJob?.detail?.blocked ?? [];
+  const blocked: WatchItem[] = signalJob?.detail?.blocked ?? [];
+  const setups: WatchItem[] = signalJob?.detail?.setups ?? [];
   const value = holdings.reduce((a, h) => a + (h.close ?? h.avg_cost) * h.shares, 0);
   const cost = holdings.reduce((a, h) => a + h.avg_cost * h.shares, 0);
   const quality = fetchJob?.detail?.quality;
@@ -202,14 +272,28 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
         {blocked.length > 0 && (
           <div className="panel-body small" style={{ borderTop: "1px solid var(--line)" }}>
             <span className="faint">觸發進場條件但未發訊號：</span>
-            {blocked.map((b) => (
-              <span key={b.stock_id} style={{ marginRight: 12 }}>
-                <StockLink id={b.stock_id} name={b.name} /> <span className="muted">{b.reasons.join("、")}</span>
-              </span>
-            ))}
+            {blocked
+              .filter((b) => !b.entry_high)
+              .map((b) => (
+                <span key={b.stock_id} style={{ marginRight: 12 }}>
+                  <StockLink id={b.stock_id} name={b.name} /> <span className="muted">{b.reasons.join("、")}</span>
+                </span>
+              ))}
           </div>
         )}
+        {blocked.some((b) => b.entry_high) && (
+          <WatchTable items={blocked.filter((b) => b.entry_high)} kind="observe" />
+        )}
       </Panel>
+
+      {setups.length > 0 && (
+        <>
+          <div className="gap" />
+          <Panel title="醞釀名單" meta={<>{setups.length} 檔<span className="sep">｜</span>跌深＋強勢跡象，收盤站上轉強價才成立</>}>
+            <WatchTable items={setups} kind="setup" />
+          </Panel>
+        </>
+      )}
 
       <div className="gap" />
       <div className="grid two">

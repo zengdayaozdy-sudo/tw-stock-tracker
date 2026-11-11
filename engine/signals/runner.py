@@ -18,6 +18,7 @@ from engine.signals.entry import entry_triggers, trigger_text
 from engine.signals.levels import compute_levels
 from engine.signals.regime import market_regime, scaled_position_cfg
 from engine.signals.selection import select
+from engine.signals.setup import setup_levels, setup_signs, setup_text
 from engine.signals.sizing import position_size
 
 HORIZON_LABELS = {"short": "短線", "long": "中長線"}
@@ -88,9 +89,21 @@ def run_signals(settings: Settings, repo: Repository, as_of: date, force: bool =
     holdings = repo.holdings_value(as_of)
     stock_groups = _stock_groups(groups)
     exposures = group_exposures(holdings, stock_groups)
-    names = repo.stock_names(candidates)
-    frames = load_frames(repo, candidates, as_of, risk["pe_river"]["lookback_years"]) if candidates else {}
+    setup_cfg = risk.get("setup_watch") or {}
+    setup_ids = sorted(set(ids)) if setup_cfg.get("enabled") else []
+    load_ids = sorted(set(candidates) | set(setup_ids))
+    names = repo.stock_names(load_ids)
+    frames = load_frames(repo, load_ids, as_of, risk["pe_river"]["lookback_years"]) if load_ids else {}
     position_cfg = scaled_position_cfg(risk["position"], regime["size_factor"])
+    # 觀察名單與醞釀名單的張數：以「成立後」會用的部位計算（偏空時＝反彈單）
+    watch_factor = (float((risk.get("rebound_mode") or {}).get("confirmed", {}).get("size_factor", 0.5))
+                    if light == "bearish" else 1.0)
+    watch_position_cfg = scaled_position_cfg(risk["position"], watch_factor)
+
+    def _watch_size(sid: str, entry: float, stop: float) -> dict:
+        exposure = max((exposures.get(g, 0.0) for g in stock_groups.get(sid, [])), default=0.0)
+        return position_size(capital, entry, stop, watch_position_cfg, holdings_count=len(holdings),
+                             group_exposure=exposure, already_held=sid in holdings)
 
     signals: list[dict] = []
     blocked: list[dict] = []
@@ -101,8 +114,16 @@ def run_signals(settings: Settings, repo: Repository, as_of: date, force: bool =
             continue
         fl = flags.get(sid, {"exclude": [], "block": [], "warn": []})
         if fl["exclude"] or fl["block"]:
-            blocked.append({"stock_id": sid, "name": names.get(sid), "triggers": trigger_text(triggers),
-                            "reasons": fl["exclude"] + fl["block"]})
+            item = {"stock_id": sid, "name": names.get(sid), "triggers": trigger_text(triggers),
+                    "reasons": fl["exclude"] + fl["block"]}
+            if not fl["exclude"]:  # 只被大盤或族群擋下：附上參考價位，條件成立時可直接使用
+                lv = compute_levels(f.prices, f.valuations, as_of, risk, bearish=regime["tighten_stop"])
+                if lv is not None:
+                    item.update({"close": lv.close, "entry_low": lv.entry_low, "entry_high": lv.entry_high,
+                                 "stop_loss": lv.stop_loss, "take_profit": lv.take_profit,
+                                 "suggested_lots": _watch_size(sid, lv.entry_high, lv.stop_loss)["lots"],
+                                 "size_factor": watch_factor})
+            blocked.append(item)
             continue
         levels = compute_levels(f.prices, f.valuations, as_of, risk, bearish=regime["tighten_stop"])
         if levels is None:
@@ -154,9 +175,13 @@ def run_signals(settings: Settings, repo: Repository, as_of: date, force: bool =
                 },
             })
 
+    setups = _setups(setup_ids, frames, flags, scores, names, as_of, setup_cfg, risk, _watch_size,
+                     watch_factor, {s["stock_id"] for s in signals})
+
     repo.replace_signals(as_of, "buy", signals)
     repo.conn.commit()
     return {
+        "setups": setups,
         "status": "ok" if ok else "forced",
         "reason": gate_reason,
         "market_light": light,
@@ -166,3 +191,29 @@ def run_signals(settings: Settings, repo: Repository, as_of: date, force: bool =
         "signals": signals,
         "blocked": blocked,
     }
+
+
+def _setups(ids, frames, flags, scores, names, as_of, cfg, risk, size_fn, factor, signaled) -> list[dict]:
+    """醞釀名單：跌深＋強勢跡象，只差一根轉強 K 棒（engine/signals/setup.py）。"""
+    out = []
+    for sid in ids:
+        f = frames.get(sid)
+        if f is None or sid in signaled:
+            continue
+        fl = flags.get(sid, {"exclude": [], "block": [], "warn": []})
+        if fl["exclude"]:
+            continue
+        signs = setup_signs(f.prices, f.chips, f.benchmark, as_of, cfg)
+        if not signs or len(signs) < cfg["min_signs"]:
+            continue
+        lv = setup_levels(f.prices, as_of, cfg, risk)
+        size = size_fn(sid, lv["entry_high"], lv["stop_loss"])
+        score = scores.get((sid, "short")) or {}
+        out.append({
+            "stock_id": sid, "name": names.get(sid), "score": score.get("total"),
+            "signs": sorted(signs), "sign_text": setup_text(signs), **lv,
+            "suggested_lots": size["lots"], "odd_shares": size["odd_shares"], "size_factor": factor,
+            "notes": [r for r in fl["block"] if not r.startswith("大盤燈號偏空")],
+        })
+    out.sort(key=lambda x: (-len(x["signs"]), x["close"] / x["ma20"]))
+    return out[: cfg["max_items"]]
