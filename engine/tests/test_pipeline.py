@@ -27,7 +27,7 @@ def test_wrong_date_is_error():
 
 
 def test_bad_values():
-    report = check_prices([_price("2330", close=-1), _price("2317", high=90)], date(2026, 11, 9), [])
+    report = check_prices([_price("2330", close=-1), _price("2317", high=90)], date(2026, 11, 9), ["2330", "2317"])
     assert len(report.errors) == 2
 
 
@@ -69,4 +69,13 @@ def test_odd_lot_only_is_not_error():
     rows = [_price("1538", open=None, high=None, low=None, close=None, volume=386)]
     assert check_prices(rows, date(2026, 11, 9), []).ok
     rows = [_price("2330", open=None, high=None, low=None, close=None, volume=5000)]
-    assert not check_prices(rows, date(2026, 11, 9), []).ok
+    assert not check_prices(rows, date(2026, 11, 9), ["2330"]).ok
+
+
+def test_untracked_stock_anomaly_only_warns():
+    """2026-11-10：沒追蹤的上櫃股有成交量沒收盤價，不可讓整天流程中止；追蹤中的股票仍要擋下。"""
+    odd = {**_price("1813"), "open": None, "high": None, "low": None, "close": None, "volume": 1927}
+    report = check_prices([_price("2330"), odd], date(2026, 11, 9), ["2330"])
+    assert report.ok and any("1813" in w for w in report.warnings)
+    report = check_prices([_price("2330"), odd], date(2026, 11, 9), ["2330", "1813"])
+    assert not report.ok

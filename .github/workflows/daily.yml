@@ -15,6 +15,9 @@ on:
       date:
         description: 補跑日期 YYYY-MM-DD（留空為今天）
         required: false
+      source:
+        description: 觸發來源（vercel-cron＝網站定時觸發，當天已完成就略過）
+        required: false
 
 concurrency:
   group: daily
@@ -51,7 +54,7 @@ jobs:
         run: python -m engine.cli sync-config
       - name: 判斷是否為交易日
         id: day
-        run: python -m engine.cli trading-day $DATE_ARG ${{ github.event_name == 'schedule' && '--skip-if-done' || '' }}
+        run: python -m engine.cli trading-day $DATE_ARG ${{ (github.event_name == 'schedule' || inputs.source == 'vercel-cron') && '--skip-if-done' || '' }}
       - name: 抓取資料與完整性檢查
         if: steps.day.outputs.open == 'true'
         run: python -m engine.cli fetch $DATE_ARG --wait-minutes ${{ inputs.date && '0' || '90' }}

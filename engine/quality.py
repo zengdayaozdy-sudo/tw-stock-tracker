@@ -39,18 +39,22 @@ def check_prices(rows: list[dict], trade_date: date, expected_ids: list[str], mi
     if missing:
         report.errors.append(f"缺少 {len(missing)} 檔股價：{', '.join(missing[:20])}")
 
+    tracked = set(expected_ids)
     for r in rows:
         o, h, lo, c = r.get("open"), r.get("high"), r.get("low"), r.get("close")
         sid = r["stock_id"]
+        # 追蹤中的股票資料異常才暫停訊號；其他股票（全市場數千檔）異常只列警告。
+        # 2026-11-10 三檔沒有追蹤的上櫃股有成交量卻沒有收盤價，曾讓整天流程中止
+        bucket = report.errors if sid in tracked else report.warnings
         if c is None:
             # 只有零股成交（不到一張）時沒有收盤價，屬正常
             if (r.get("volume") or 0) >= ONE_LOT:
-                report.errors.append(f"{sid} 有成交量但沒有收盤價")
+                bucket.append(f"{sid} 有成交量但沒有收盤價")
             continue  # 當日無成交
         if c <= 0:
-            report.errors.append(f"{sid} 收盤價異常：{c}")
+            bucket.append(f"{sid} 收盤價異常：{c}")
         if None not in (h, lo) and h < lo:
-            report.errors.append(f"{sid} 最高價低於最低價")
+            bucket.append(f"{sid} 最高價低於最低價")
         if None not in (h, lo, o) and not (lo <= o <= h and lo <= c <= h):
             report.warnings.append(f"{sid} 開收盤價超出高低區間")
     return report

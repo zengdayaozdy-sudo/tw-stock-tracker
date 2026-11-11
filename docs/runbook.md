@@ -103,6 +103,8 @@ Import 本 repo → Root Directory 設為 `web` → 環境變數：
 | `ANTHROPIC_API_KEY`、`ANTHROPIC_MODEL` | 引擎 | Claude（預設 claude-opus-5-5） |
 | `SITE_PASSWORD`、`SESSION_SECRET` | 網站 | 單一密碼登入與 session 簽章 |
 | `MCP_TOKEN` | 網站 | MCP 接口權杖（至少 32 字元）；未設定或太短時接口關閉 |
+| `CRON_SECRET` | 網站（Vercel） | Vercel 定時觸發的驗證字串（至少 16 字元，自行產生）；Vercel 呼叫時會自動帶上 |
+| `GITHUB_DISPATCH_TOKEN` | 網站（Vercel） | GitHub fine-grained token，只授權本 repo 的 Actions 讀寫，用來啟動 daily.yml |
 | `SITE_URL` | 引擎 | LINE 報告附網站連結 |
 | `TEST_DATABASE_URL` | 測試 | 測試用資料庫（會清空 public schema） |
 
@@ -113,11 +115,26 @@ Import 本 repo → Root Directory 設為 `web` → 環境變數：
 | 時間 | 事件 |
 |---|---|
 | 09:00–13:30 | Mac 盤中監控每 3 分鐘檢查持股停損 |
-| 15:30 起 | GitHub 排程啟動（可能延遲數十分鐘）；官方資料未更新時最多再等 90 分鐘 |
-| 約 16:00–17:00 | LINE 每日報告；網站更新 |
+| 16:00–17:00 | Vercel 定時觸發 daily.yml（主要）；官方資料未更新時最多再等 90 分鐘 |
+| 18:00–19:00、21:00–22:00 | Vercel 再觸發兩次；當天已推播成功就直接略過 |
+| 15:30、17:00、19:00 | GitHub 自己的排程（備援；尖峰時可能延遲數小時，2026-11-10 延遲約 8 小時） |
+| 約 16:30–18:00 | LINE 每日報告；網站更新 |
 | 17:30 | Mac 檢查當天收盤後批次是否已開始，沒有就推播「排程未執行」 |
 
 休市日：`trading-day` 判斷後略過所有步驟，並留下休市紀錄。
+
+### 4.1.1 設定 Vercel 定時觸發（一次性）
+
+GitHub Actions 的排程在尖峰時段常延遲數小時，所以由 Vercel Cron（`web/vercel.json`）在交易日 16、18、21 點各呼叫一次 `/api/cron/daily`，再由它啟動 GitHub 的 daily.yml。
+
+1. GitHub → Settings → Developer settings → Fine-grained tokens → Generate new token：Repository access 只選 `tw-stock-tracker`，Permissions 只開 **Actions: Read and write**，期限建議一年。
+2. Vercel 專案 → Settings → Environment Variables（Production）新增：
+   - `GITHUB_DISPATCH_TOKEN`：上一步的 token
+   - `CRON_SECRET`：自行產生的隨機字串（至少 16 字元，例如在終端機執行 `openssl rand -hex 24`）
+3. 到 GitHub 推送任一 commit（或在 Vercel 重新部署）讓設定生效。
+4. 驗證：Vercel 專案 → Settings → Cron Jobs 會列出三個時段，可按 Run 手動觸發一次；GitHub Actions 應出現一筆 `workflow_dispatch` 的「每日收盤後批次」。
+
+沒設定這兩個變數時，`/api/cron/daily` 回 401／500，只剩 GitHub 自己的排程。
 
 ### 4.2 指令一覽（`python -m engine.cli <指令>`，大多可加 `--date YYYY-MM-DD`）
 
