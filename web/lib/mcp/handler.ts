@@ -25,5 +25,10 @@ export async function serveMcp(req: Request, token: string | null, via: "header"
       { status: 401 },
     );
   }
+  // 不提供伺服器主動推送的 SSE 串流：GET 直接回 405（MCP 規格允許），
+  // 否則客戶端開著的 GET 連線會一直掛到 Vercel 300 秒逾時（2026-11-09～11 共 44 次），白白耗用函式時間
+  if (req.method === "GET") {
+    return new Response("Method Not Allowed", { status: 405, headers: { Allow: "POST, DELETE" } });
+  }
   return mcp(req);
 }

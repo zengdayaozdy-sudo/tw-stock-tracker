@@ -112,20 +112,24 @@ Import 本 repo → Root Directory 設為 `web` → 環境變數：
 
 ### 4.1 每日時間線（交易日）
 
+目標：晚上 24 點前全部資料更新完成，隔天開盤前可以照訊號操作。
+
 | 時間 | 事件 |
 |---|---|
 | 09:00–13:30 | Mac 盤中監控每 3 分鐘檢查持股停損 |
-| 16:00–17:00 | Vercel 定時觸發 daily.yml（主要）；官方資料未更新時最多再等 90 分鐘 |
-| 18:00–19:00、21:00–22:00 | Vercel 再觸發兩次；當天已推播成功就直接略過 |
-| 15:30、17:00、19:00 | GitHub 自己的排程（備援；尖峰時可能延遲數小時，2026-11-10 延遲約 8 小時） |
-| 約 16:30–18:00 | LINE 每日報告；網站更新 |
+| 16:00–17:00 | Vercel 觸發收盤後主流程：行情、法人、估值、重大訊息、評分、訊號、LINE 每日報告（法人或行情尚未公布時每 10 分鐘重試，最多 90 分鐘） |
 | 17:30 | Mac 檢查當天收盤後批次是否已開始，沒有就推播「排程未執行」 |
+| 18:00–19:00 | Vercel 再觸發一次主流程（當天已完成就略過） |
+| 21:00–22:00 | Vercel 觸發晚間補抓：當日融資融券（等到公布，最多 75 分鐘）、借券賣出、15:30 之後的重大訊息，重算評分與訊號；訊號有變動才推播「晚間更新」 |
+| 15:30、18:00、21:30 | GitHub 自己的排程（備援；尖峰時可能延遲數小時。延遲到凌晨 08:00 以前才執行，處理的仍是前一個交易日） |
+
+同一階段當天已完成時，後續的觸發都在「判斷是否為交易日」步驟直接略過，不會重複推播。下午的每日報告沒送出時，晚間補抓改送完整報告。
 
 休市日：`trading-day` 判斷後略過所有步驟，並留下休市紀錄。
 
 ### 4.1.1 設定 Vercel 定時觸發（一次性）
 
-GitHub Actions 的排程在尖峰時段常延遲數小時，所以由 Vercel Cron（`web/vercel.json`）在交易日 16、18、21 點各呼叫一次 `/api/cron/daily`，再由它啟動 GitHub 的 daily.yml。
+GitHub Actions 的排程在尖峰時段常延遲數小時，所以由 Vercel Cron（`web/vercel.json`）在交易日 16、18 點呼叫 `/api/cron/daily`、21 點呼叫 `/api/cron/evening`，再由它們啟動 GitHub 的 daily.yml（主流程／晚間補抓）。
 
 1. GitHub → Settings → Developer settings → Fine-grained tokens → Generate new token：Repository access 只選 `tw-stock-tracker`，Permissions 只開 **Actions: Read and write**，期限建議一年。
 2. Vercel 專案 → Settings → Environment Variables（Production）新增：
@@ -144,13 +148,14 @@ GitHub Actions 的排程在尖峰時段常延遲數小時，所以由 Vercel Cro
 | `migrate` | 套用資料庫 migration |
 | `sync-config` | 方案與風控設定寫入資料庫（網站用） |
 | `trading-day` | 是否為交易日 |
-| `fetch [--wait-minutes N]` | 抓當日資料＋完整性檢查（未通過結束碼 2） |
+| `fetch [--wait-minutes N] [--require-margin]` | 抓當日資料＋完整性檢查（未通過結束碼 2）；資料未公布時每 10 分鐘重試；`--require-margin` 等到當日融資融券公布 |
 | `backfill [--years N] [代號…]` | 回補歷史（預設全部自選股 3 年） |
 | `backfill-new` | 自動回補歷史不足的自選股與持股（依剩餘額度，每次最多 40 檔；`--limit N` 可指定） |
 | `liquidity` / `news` / `score` / `filters` | 濾網與評分各步驟 |
 | `signals [--force]` | 買進訊號；資料不完整時暫停（`--force` 僅供除錯） |
 | `holdings` | 持股檢查與賣出提醒 |
-| `notify [--resend]` / `alert [--message …]` | LINE 每日報告／系統警告 |
+| `notify [--resend] [--evening]` / `alert [--message …]` | LINE 每日報告（`--evening`：晚間補抓後只推播有變動的訊號）／系統警告 |
+| `line-test` | 送一則 LINE 測試訊息 |
 | `watch add/remove/list` | 自選股 |
 | `trade buy/sell/list`、`stats`、`capital` | 交易日誌、統計、總資金 |
 | `companies` / `seed-groups` / `holders` / `maintenance` | 每週維護 |

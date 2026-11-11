@@ -142,3 +142,16 @@ describe("2025 年版協定（initialize）", () => {
     expect(list.result.tools.length).toBeGreaterThan(10);
   });
 });
+
+describe("MCP 端點 GET", () => {
+  it("有權杖的 GET 立刻回 405，不開 SSE 串流（避免掛到 300 秒逾時）", async () => {
+    const res = await serveMcp(new Request("http://localhost/api/mcp", { method: "GET" }), TOKEN, "path");
+    expect(res.status).toBe(405);
+    expect(res.headers.get("allow")).toContain("POST");
+  });
+
+  it("權杖錯誤的 GET 仍回 404，不透露端點存在", async () => {
+    const res = await serveMcp(new Request("http://localhost/api/mcp", { method: "GET" }), "wrong", "path");
+    expect(res.status).toBe(404);
+  });
+});

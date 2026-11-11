@@ -57,6 +57,8 @@ twse:
     taiex_history: https://www.twse.com.tw/rwd/zh/TAIEX/MI_5MINS_HIST?date={date}&response=json
     # 2026-11-09 實測：信用額度總量管制餘額表，當天更新；「當日餘額」欄為借券賣出餘額
     sbl_site: https://www.twse.com.tw/rwd/zh/marginTrading/TWT93U?date={date}&response=json
+    # 2026-11-11 實測：融資融券彙總（全部），晚間公布當天資料；表格「今日餘額」第一個是融資、第二個是融券
+    margin_site: https://www.twse.com.tw/rwd/zh/marginTrading/MI_MARGN?date={date}&selectType=ALL&response=json
     # 2026-11-09 實測：董監質權設定占持有股數彙總表，依百分比級距列出公司（約每月更新）
     pledge: https://openapi.twse.com.tw/v1/opendata/t187ap09_L
     # 第 4 階段（2026-11-08 實測）

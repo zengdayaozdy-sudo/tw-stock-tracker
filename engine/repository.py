@@ -470,6 +470,20 @@ class Repository:
             )
             return {a for (lst,) in cur.fetchall() for a in (lst or [])}
 
+    def reported_signals(self, run_date: date) -> dict[str, list[str]] | None:
+        """當天已送出的每日報告裡有哪些訊號（晚間補抓比對用）；沒有紀錄時回傳 None。"""
+        with self.conn.cursor() as cur:
+            cur.execute(
+                "SELECT detail FROM job_logs WHERE run_date = %s AND job = 'notify' AND status = 'success' "
+                "AND (detail->>'report_sent')::boolean AND detail ? 'reported_buys' "
+                "ORDER BY started_at DESC LIMIT 1",
+                (run_date,),
+            )
+            row = cur.fetchone()
+        if not row:
+            return None
+        return {"buys": row[0].get("reported_buys") or [], "sells": row[0].get("reported_sells") or []}
+
     def report_sent(self, run_date: date) -> bool:
         with self.conn.cursor() as cur:
             cur.execute(

@@ -224,11 +224,40 @@ class ExchangeClient:
         return out
 
     # ---------- 融資融券 ----------
+    def _twse_margin_site(self, trade_date: date) -> list[dict] | None:
+        """證交所網站版融資融券彙總（當天晚間公布）；還沒公布或格式不符時回傳 None。"""
+        try:
+            payload = self.raw("twse", "margin_site", date=trade_date.strftime("%Y%m%d"))
+        except SourceError:
+            return None
+        if not isinstance(payload, dict) or payload.get("stat") != "OK" \
+                or str(payload.get("date")) != trade_date.strftime("%Y%m%d"):
+            return None
+        for table in payload.get("tables") or []:
+            fields = table.get("fields") or []
+            if "融資融券彙總" not in str(table.get("title")) or fields.count("今日餘額") < 2:
+                continue
+            first = fields.index("今日餘額")
+            second = fields.index("今日餘額", first + 1)
+            out = []
+            for row in table.get("data") or []:
+                code = str(row[0]).strip()
+                if _is_common_stock(code) and len(row) > second:
+                    out.append({"stock_id": code, "date": trade_date,
+                                "margin_balance": to_int(row[first]), "short_balance": to_int(row[second])})
+            return out or None
+        return None
+
     def margin(self, trade_date: date) -> list[dict]:
-        """融資融券。證交所 OpenAPI 沒有日期欄位，以 OpenAPI 每日行情的日期標記（通常是前一交易日），
-        不會把舊資料標成今天；當天的上市融資券會在隔天的排程補上。"""
+        """融資融券。上市先用證交所網站版（當天晚間公布）；還沒公布時改用 OpenAPI，
+        OpenAPI 沒有日期欄位，以 OpenAPI 每日行情的日期標記（通常是前一交易日），不會把舊資料標成今天。"""
         out: list[dict] = []
-        for market, code_keys in (("twse", ("Code", "股票代號")), ("tpex", ("SecuritiesCompanyCode", "Code"))):
+        site = self._twse_margin_site(trade_date)
+        if site:
+            out.extend(site)
+        markets = (("tpex", ("SecuritiesCompanyCode", "Code")),) if site else \
+            (("twse", ("Code", "股票代號")), ("tpex", ("SecuritiesCompanyCode", "Code")))
+        for market, code_keys in markets:
             fallback = self.openapi_date() if market == "twse" else None
             for r in _rows(self.raw(market, "margin_all")):
                 code = str(pick(r, *code_keys) or "").strip()

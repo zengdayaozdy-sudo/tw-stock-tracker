@@ -8,6 +8,10 @@ import { dataUpdates, holdingsDetail, lastHeartbeat, latestDate, latestJob, mark
 import { requireSession } from "@/lib/session";
 import { goToStock } from "./actions";
 
+function latest(...dates: (Date | undefined)[]): Date | undefined {
+  return dates.filter((d): d is Date => !!d).sort((a, b) => +new Date(b) - +new Date(a))[0];
+}
+
 export default async function Dashboard({ searchParams }: { searchParams: Promise<{ date?: string }> }) {
   await requireSession();
   const { date: requested } = await searchParams;
@@ -44,7 +48,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
           <h1>{dateLabel(date)}</h1>
           <p className="sub">
             收盤後評分與訊號<span className="sep">｜</span>
-            <Updated at={upd.notify ?? upd.signals ?? upd.score} />
+            <Updated at={latest(upd.signals, upd.score, upd["notify-evening"])} />
           </p>
         </div>
         <form action={goToStock} className="quick-search">
@@ -143,6 +147,10 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
             <dt>消息面排雷</dt>
             <dd className="flush">
               <Updated at={upd.news} empty="尚未執行" label="判讀" />
+            </dd>
+            <dt>晚間補抓</dt>
+            <dd className="flush">
+              <Updated at={upd["notify-evening"]} empty="今晚 21 點後" label="完成" />
             </dd>
             <dt>LINE 報告</dt>
             <dd>

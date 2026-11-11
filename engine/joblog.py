@@ -9,6 +9,8 @@ from contextlib import contextmanager
 from datetime import date
 from typing import Any
 
+STALE_RUNNING_MINUTES = 240  # 每日排程逾時上限 180 分鐘，再留一點緩衝
+
 
 class JobRun:
     def __init__(self, conn, job: str, run_date: date | None):
@@ -18,6 +20,13 @@ class JobRun:
         self.detail: dict[str, Any] = {}
         self.status = "success"
         with conn.cursor() as cur:
+            # 先前被取消或逾時中斷的同名執行會一直停在 running：超過上限時間就標為失敗，系統狀態頁才不會誤判
+            cur.execute(
+                "UPDATE job_logs SET status = 'failed', finished_at = now(), "
+                "detail = coalesce(detail, '{}'::jsonb) || '{\"error\": \"執行中斷（排程取消或逾時）\"}'::jsonb "
+                "WHERE job = %s AND status = 'running' AND started_at < now() - %s * interval '1 minute'",
+                (job, STALE_RUNNING_MINUTES),
+            )
             cur.execute(
                 "INSERT INTO job_logs (job, run_date, status) VALUES (%s, %s, 'running') RETURNING log_id",
                 (job, run_date),

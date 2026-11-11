@@ -1,20 +1,28 @@
 name: 每日收盤後批次
 
+# 兩個階段，目標是晚上 24 點前全部資料更新完成，隔天開盤前可以照訊號操作：
+#   main     收盤後：行情、法人、估值、評分、訊號、LINE 每日報告
+#   evening  晚間補抓：當日融資融券、借券賣出、15:30 之後的重大訊息，重算評分與訊號，只推播有變動的部分
+#
+# 主要觸發：Vercel Cron（web/vercel.json）準時呼叫 /api/cron/daily 與 /api/cron/evening，再以 workflow_dispatch 啟動。
+# 備援觸發：下面的 GitHub 排程。GitHub 排程尖峰時可能延遲數小時（2026-11-10 延遲約 8 小時）；
+# 延遲到凌晨 08:00 以前才執行時，處理的仍是前一個交易日（engine/cli.py 的 _parse_date）。
+# 同一階段當天已完成就在「判斷是否為交易日」步驟略過，不會重複推播。
 on:
   schedule:
-    # 台灣時間（UTC+8）週一至週五 15:30 ＝ UTC 07:30。
-    # GitHub 排程可能延遲數分鐘到數十分鐘；官方資料未更新時 fetch 最多再等 90 分鐘。
-    # 休市日由 trading-day 步驟判斷後略過後續步驟。
-    - cron: "30 7 * * 1-5"
-    # 備援：GitHub 排程偶爾不觸發（2026-11-09 就沒有觸發）。17:00、19:00 再各排一次，
-    # 當天已推播成功會在「判斷是否為交易日」步驟直接略過，不會重複推播。
-    - cron: "0 9 * * 1-5"
-    - cron: "0 11 * * 1-5"
+    # cron 為 UTC，台灣時間 ＝ UTC＋8
+    - cron: "30 7 * * 1-5"   # 15:30 收盤後（備援）
+    - cron: "0 10 * * 1-5"   # 18:00 收盤後（備援）
+    - cron: "30 13 * * 1-5"  # 21:30 晚間補抓（備援）
   workflow_dispatch:
     inputs:
       date:
         description: 補跑日期 YYYY-MM-DD（留空為今天）
         required: false
+      phase:
+        description: main＝收盤後；evening＝晚間補抓
+        required: false
+        default: main
       source:
         description: 觸發來源（vercel-cron＝網站定時觸發，當天已完成就略過）
         required: false
@@ -41,6 +49,8 @@ jobs:
       SITE_URL: ${{ vars.SITE_URL }}
       TZ: Asia/Taipei
       DATE_ARG: ${{ inputs.date && format('--date {0}', inputs.date) || '' }}
+      PHASE: ${{ inputs.phase || (github.event.schedule == '30 13 * * 1-5' && 'evening') || 'main' }}
+      SKIP_IF_DONE: ${{ (github.event_name == 'schedule' || inputs.source == 'vercel-cron') && '--skip-if-done' || '' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -54,12 +64,18 @@ jobs:
         run: python -m engine.cli sync-config
       - name: 判斷是否為交易日
         id: day
-        run: python -m engine.cli trading-day $DATE_ARG ${{ (github.event_name == 'schedule' || inputs.source == 'vercel-cron') && '--skip-if-done' || '' }}
+        run: python -m engine.cli trading-day $DATE_ARG --phase $PHASE $SKIP_IF_DONE
       - name: 抓取資料與完整性檢查
         if: steps.day.outputs.open == 'true'
-        run: python -m engine.cli fetch $DATE_ARG --wait-minutes ${{ inputs.date && '0' || '90' }}
+        # 收盤後：行情或法人尚未公布時最多等 90 分鐘。晚間：等當日融資融券公布，最多 75 分鐘。補跑指定日期不等待。
+        run: |
+          if [ "$PHASE" = evening ]; then
+            python -m engine.cli fetch $DATE_ARG --require-margin --wait-minutes ${{ inputs.date && '0' || '75' }}
+          else
+            python -m engine.cli fetch $DATE_ARG --wait-minutes ${{ inputs.date && '0' || '90' }}
+          fi
       - name: 回補新加入的自選股
-        if: steps.day.outputs.open == 'true'
+        if: steps.day.outputs.open == 'true' && env.PHASE == 'main'
         run: python -m engine.cli backfill-new
       - name: 流動性過濾
         if: steps.day.outputs.open == 'true'
@@ -79,9 +95,9 @@ jobs:
       - name: 持股檢查與賣出提醒
         if: steps.day.outputs.open == 'true'
         run: python -m engine.cli holdings $DATE_ARG
-      - name: LINE 每日報告
+      - name: LINE 推播
         if: steps.day.outputs.open == 'true'
-        run: python -m engine.cli notify $DATE_ARG
+        run: python -m engine.cli notify $DATE_ARG ${{ env.PHASE == 'evening' && '--evening' || '' }}
       - name: 失敗時推播系統警告
         if: failure()
         run: python -m engine.cli alert $DATE_ARG

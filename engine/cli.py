@@ -8,16 +8,22 @@ from __future__ import annotations
 import argparse
 import json
 import logging
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 from engine.config import TZ, load_settings
 
 PIPELINE_STEPS: list[tuple[str, str]] = []
 
 
-def _parse_date(value: str | None) -> date:
+# 凌晨這個時間以前沒指定日期的指令，處理的是前一天（排程延遲到半夜才執行時，仍完成前一個交易日）
+LATE_RUN_CUTOFF_HOUR = 8
+
+
+def _parse_date(value: str | None, now: datetime | None = None) -> date:
     if not value:
-        return datetime.now(TZ).date()
+        now = now or datetime.now(TZ)
+        d = now.date()
+        return d - timedelta(days=1) if now.hour < LATE_RUN_CUTOFF_HOUR else d
     return date.fromisoformat(value)
 
 
@@ -65,14 +71,27 @@ def cmd_fetch(args) -> None:
     trade_date = _parse_date(args.date)
     settings, conn, repo, exchange, finmind = _services()
     waited = 0
+
+    def pending(r) -> str | None:
+        """還需要等官方資料的原因；None 表示可以往下走。"""
+        if not r.market_open:
+            return f"行情尚未更新（最新 {r.counts.get('latest_available')}）"
+        if not r.quality.ok:
+            return "資料不完整：" + "；".join(r.quality.errors[:3])  # 例如三大法人尚未公布
+        if args.require_margin and r.counts.get("margin_today", 0) < MIN_MARGIN_ROWS:
+            return "當日融資融券尚未公布"
+        return None
+
     with job_run(conn, "fetch", trade_date) as run:
         result = fetch_daily(settings, repo, exchange, finmind, trade_date)
-        # 交易日但官方資料尚未更新：每 10 分鐘重試，最多等 --wait-minutes 分鐘
-        while not result.market_open and waited < args.wait_minutes and _is_trading_day(exchange, trade_date):
-            logging.info("官方資料尚未更新（最新 %s），10 分鐘後重試", result.counts.get("latest_available"))
+        # 官方資料尚未更新或不完整：每 10 分鐘重試，最多等 --wait-minutes 分鐘
+        while (reason := pending(result)) and waited < args.wait_minutes and _is_trading_day(exchange, trade_date):
+            logging.info("%s，10 分鐘後重試", reason)
             time.sleep(600)
             waited += 10
             result = fetch_daily(settings, repo, exchange, finmind, trade_date)
+        if args.require_margin and result.market_open and result.counts.get("margin_today", 0) < MIN_MARGIN_ROWS:
+            result.quality.warnings.append(f"等了 {waited} 分鐘仍沒有當日融資融券，明天再補")
         run.note(**result.to_dict(), waited_minutes=waited)
         if not result.market_open:
             run.skip("休市" if not _is_trading_day(exchange, trade_date) else "官方資料尚未更新")
@@ -80,6 +99,9 @@ def cmd_fetch(args) -> None:
     if result.market_open and not result.quality.ok:
         # 交給後續步驟：資料不完整時暫停訊號並推播警告（第 6 階段接上 LINE）
         raise SystemExit(2)
+
+
+MIN_MARGIN_ROWS = 500  # 上市＋上櫃可信用交易股票上千檔，低於此數視為當天融資融券尚未公布
 
 
 def _is_trading_day(exchange, d: date) -> bool:
@@ -101,12 +123,12 @@ def cmd_trading_day(args) -> None:
     settings = load_settings()
     d = _parse_date(args.date)
     if getattr(args, "skip_if_done", False) and os.environ.get("DATABASE_URL"):
-        # 備援排程：當天的每日報告已成功推播就不再重跑，避免重複推播
+        # 備援排程：當天這個階段已完成就不再重跑，避免重複推播（下午：每日報告；晚間：晚間補抓）
         from engine.db import connect
         from engine.repository import Repository
 
         conn = connect()
-        done = Repository(conn).latest_job("notify", d)
+        done = Repository(conn).latest_job("notify-evening" if args.phase == "evening" else "notify", d)
         conn.close()
         if done and done[0] == "success":
             print(f"{d}：今日排程已完成，略過")
@@ -503,6 +525,18 @@ def cmd_notify(args) -> None:
     as_of = _parse_date(args.date)
     conn = connect()
     line = LineClient.from_env(settings.notify["line"])
+    if args.evening:
+        from engine.notify.runner import run_evening
+
+        with job_run(conn, "notify-evening", as_of) as run:
+            result = run_evening(settings, Repository(conn), line, as_of)
+            run.note(**{k: v for k, v in result.items() if k != "messages"},
+                     message_count=len(result.get("messages", [])))
+        for m in result.get("messages", []):
+            print(m)
+        print(result.get("report_skipped") or ("已推播晚間更新" if result.get("update_sent") else
+                                               "訊號沒有變動，不推播" if result.get("mode") == "diff" else ""))
+        return
     with job_run(conn, "notify", as_of) as run:
         result = run_notify(settings, Repository(conn), line, as_of, resend=args.resend)
         run.note(**{k: v for k, v in result.items() if k != "messages"}, message_count=len(result.get("messages", [])))
@@ -782,6 +816,7 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("fetch", help="抓取當日資料並做完整性檢查")
     p.add_argument("--date")
     p.add_argument("--wait-minutes", type=int, default=0, help="交易日但官方資料尚未更新時，最多等待幾分鐘")
+    p.add_argument("--require-margin", action="store_true", help="晚間補抓：等到當日融資融券公布（最多 --wait-minutes）")
     p.set_defaults(func=cmd_fetch)
 
     p = sub.add_parser("backfill", help="回補自選股歷史資料（使用 FinMind 額度）")
@@ -838,6 +873,7 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("notify", help="LINE 每日報告與系統警告")
     p.add_argument("--date")
     p.add_argument("--resend", action="store_true", help="今日報告已送出時仍重送")
+    p.add_argument("--evening", action="store_true", help="晚間補抓後：和下午報告比對，只推播有變動的訊號")
     p.set_defaults(func=cmd_notify)
 
     p = sub.add_parser("alert", help="只檢查並推播系統警告")
@@ -893,7 +929,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser("trading-day", help="判斷是否為交易日（排程用）")
     p.add_argument("--date")
-    p.add_argument("--skip-if-done", action="store_true", help="當天每日報告已推播成功就略過（備援排程用）")
+    p.add_argument("--skip-if-done", action="store_true", help="當天這個階段已完成就略過（備援排程用）")
+    p.add_argument("--phase", choices=["main", "evening"], default="main", help="main＝收盤後；evening＝晚間補抓")
     p.set_defaults(func=cmd_trading_day)
 
     sub.add_parser("holders", help="集保股權分散表：大戶持股比例（每週）").set_defaults(func=cmd_holders)

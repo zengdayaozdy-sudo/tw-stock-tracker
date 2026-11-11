@@ -2,6 +2,7 @@
 import { NextRequest } from "next/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { GET } from "../app/api/cron/daily/route";
+import { GET as GET_EVENING } from "../app/api/cron/evening/route";
 import { proxy } from "../proxy";
 
 const call = (auth?: string) =>
@@ -34,6 +35,16 @@ describe("定時觸發 /api/cron/daily", () => {
     expect(res.status).toBe(200);
     const [url, init] = fetchMock.mock.calls[0];
     expect(url).toContain("/actions/workflows/daily.yml/dispatches");
-    expect(JSON.parse(init.body)).toEqual({ ref: "main", inputs: { source: "vercel-cron" } });
+    expect(JSON.parse(init.body)).toEqual({ ref: "main", inputs: { source: "vercel-cron", phase: "main" } });
+  });
+
+  it("晚間補抓端點以 evening 階段啟動，同樣需要 CRON_SECRET", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const url = "http://localhost/api/cron/evening";
+    expect((await GET_EVENING(new NextRequest(url))).status).toBe(401);
+    const res = await GET_EVENING(new NextRequest(url, { headers: { authorization: "Bearer cron-test-secret-0123456789" } }));
+    expect(res.status).toBe(200);
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body).inputs.phase).toBe("evening");
   });
 });
