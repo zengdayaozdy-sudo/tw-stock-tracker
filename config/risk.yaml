@@ -72,7 +72,7 @@ setup_watch:
   institutional_days: 5        # 法人逆勢買：外資＋投信 5 日合計買超
   margin_days: 5               # 融資減肥：融資餘額 5 日減少
   margin_drop: 0.05            #   5% 以上
-  min_signs: 1                 # 至少幾項強勢跡象才列入
+  min_signs: 2                 # 至少幾項強勢跡象才列入（研究：1 項與對照組無差異，2 項以上每筆 +2.1%）
   max_items: 8                 # 報告最多列幾檔（跡象多、跌得深的優先）
   chase_pct: 0.01              # 建議買進區間上緣＝轉強價 +1%
   stop_lookback_days: 5        # 停損：近 5 日最低點
