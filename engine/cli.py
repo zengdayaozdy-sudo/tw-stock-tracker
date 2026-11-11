@@ -78,8 +78,11 @@ def cmd_fetch(args) -> None:
             return f"行情尚未更新（最新 {r.counts.get('latest_available')}）"
         if not r.quality.ok:
             return "資料不完整：" + "；".join(r.quality.errors[:3])  # 例如三大法人尚未公布
-        if args.require_margin and r.counts.get("margin_today", 0) < MIN_MARGIN_ROWS:
-            return "當日融資融券尚未公布"
+        if args.require_margin:
+            missing = [label for m, label in (("twse", "上市"), ("tpex", "上櫃"))
+                       if r.counts.get(f"margin_today_{m}", 0) < MIN_MARGIN_ROWS[m]]
+            if missing:
+                return f"當日融資融券尚未公布（{'、'.join(missing)}）"
         return None
 
     with job_run(conn, "fetch", trade_date) as run:
@@ -90,8 +93,8 @@ def cmd_fetch(args) -> None:
             time.sleep(600)
             waited += 10
             result = fetch_daily(settings, repo, exchange, finmind, trade_date)
-        if args.require_margin and result.market_open and result.counts.get("margin_today", 0) < MIN_MARGIN_ROWS:
-            result.quality.warnings.append(f"等了 {waited} 分鐘仍沒有當日融資融券，明天再補")
+        if args.require_margin and result.market_open and (reason := pending(result)):
+            result.quality.warnings.append(f"等了 {waited} 分鐘仍{reason.replace('尚未公布', '沒有')}，明天再補")
         run.note(**result.to_dict(), waited_minutes=waited)
         if not result.market_open:
             run.skip("休市" if not _is_trading_day(exchange, trade_date) else "官方資料尚未更新")
@@ -101,7 +104,8 @@ def cmd_fetch(args) -> None:
         raise SystemExit(2)
 
 
-MIN_MARGIN_ROWS = 500  # 上市＋上櫃可信用交易股票上千檔，低於此數視為當天融資融券尚未公布
+# 可信用交易股票：上市約 1,000 檔、上櫃約 800 檔，低於此數視為當天融資融券尚未公布
+MIN_MARGIN_ROWS = {"twse": 500, "tpex": 300}
 
 
 def _is_trading_day(exchange, d: date) -> bool:

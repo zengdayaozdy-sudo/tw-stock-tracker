@@ -67,10 +67,10 @@ jobs:
         run: python -m engine.cli trading-day $DATE_ARG --phase $PHASE $SKIP_IF_DONE
       - name: 抓取資料與完整性檢查
         if: steps.day.outputs.open == 'true'
-        # 收盤後：行情或法人尚未公布時最多等 90 分鐘。晚間：等當日融資融券公布，最多 75 分鐘。補跑指定日期不等待。
+        # 收盤後：行情或法人尚未公布時最多等 90 分鐘。晚間：等上市、上櫃當日融資融券都公布，最多 100 分鐘（櫃買較晚，約 22 點）。補跑指定日期不等待。
         run: |
           if [ "$PHASE" = evening ]; then
-            python -m engine.cli fetch $DATE_ARG --require-margin --wait-minutes ${{ inputs.date && '0' || '75' }}
+            python -m engine.cli fetch $DATE_ARG --require-margin --wait-minutes ${{ inputs.date && '0' || '100' }}
           else
             python -m engine.cli fetch $DATE_ARG --wait-minutes ${{ inputs.date && '0' || '90' }}
           fi

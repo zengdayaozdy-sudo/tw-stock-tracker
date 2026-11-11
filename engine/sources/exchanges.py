@@ -243,7 +243,7 @@ class ExchangeClient:
             for row in table.get("data") or []:
                 code = str(row[0]).strip()
                 if _is_common_stock(code) and len(row) > second:
-                    out.append({"stock_id": code, "date": trade_date,
+                    out.append({"stock_id": code, "date": trade_date, "market": "twse",
                                 "margin_balance": to_int(row[first]), "short_balance": to_int(row[second])})
             return out or None
         return None
@@ -270,6 +270,7 @@ class ExchangeClient:
                     {
                         "stock_id": code,
                         "date": d,
+                        "market": market,
                         "margin_balance": to_int(
                             pick(r, "融資今日餘額", "MarginPurchaseBalance", "MarginPurchaseTodayBalance")
                         ),

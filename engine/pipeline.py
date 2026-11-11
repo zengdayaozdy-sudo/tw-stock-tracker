@@ -103,7 +103,10 @@ def fetch_daily(
 
     margin = [r for r in exchange.margin(trade_date) if r["stock_id"] in known]
     result.counts["margin"] = repo.upsert_chips(margin)
-    result.counts["margin_today"] = sum(1 for r in margin if r["date"] == trade_date)
+    # 當日融資融券依市場分開計數：櫃買比證交所晚公布（2026-11-11 證交所 21:09 已有、櫃買要到 22 點後）
+    for m in ("twse", "tpex"):
+        result.counts[f"margin_today_{m}"] = sum(1 for r in margin if r["date"] == trade_date and r.get("market") == m)
+    result.counts["margin_today"] = result.counts["margin_today_twse"] + result.counts["margin_today_tpex"]
     # 證交所融資券晚間才公布、OpenAPI 晚一個交易日，當天缺資料屬正常：只列警告，不暫停訊號
     margin_check = check_chips([r for r in margin if r["date"] == trade_date], ids, "當日融資融券")
     result.quality.warnings.extend(margin_check.errors + margin_check.warnings)

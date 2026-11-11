@@ -62,5 +62,6 @@ def test_twse_margin_site_same_day():
 
     ex = ExchangeClient(load_settings("free"), HttpClient(transport=httpx.MockTransport(handler), max_retries=0))
     rows = {r["stock_id"]: r for r in ex.margin(D)}
-    assert rows["2330"] == {"stock_id": "2330", "date": D, "margin_balance": 15_100, "short_balance": 125}
+    assert rows["2330"] == {"stock_id": "2330", "date": D, "market": "twse", "margin_balance": 15_100,
+                            "short_balance": 125}
     assert rows["6488"]["date"] == D and "00400A" not in rows
