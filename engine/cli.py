@@ -470,6 +470,12 @@ def cmd_filters(args) -> None:
     print(f"大盤燈號：{result['light_label']}（合計 {result['light_total']:+d}）")
     for item in result["light_inputs"].values():
         print(f"  {item['vote']:+d}  {item['label']}：{item['reason']}")
+    if result.get("rebound"):
+        from engine.filters.rebound import STATE_LABELS
+
+        print(f"反彈偵測：{STATE_LABELS[result['rebound']]}（{result['rebound_points']} 點）｜盤勢模式 {result['regime']}")
+        for t in result["rebound_evidence"]:
+            print(f"  ・{t}")
     print(f"族群：{result['groups_ranked']} 個排名，弱勢 {'、'.join(result['weak_groups']) or '無'}；"
           f"{result['blocked_by_group']} 檔屬弱勢族群")
     print(f"事件提示 {result['event_warnings']} 則；今日排除合計 {result['excluded_total']} 檔")
