@@ -798,6 +798,30 @@ def cmd_backtest(args) -> None:
     print(f"報告：{out}" + (f"（run {result['run_id']}）" if result["run_id"] else ""))
 
 
+def cmd_setup_study(args) -> None:
+    from pathlib import Path
+
+    from engine.backtest.runner import periods, universe_for_backtest
+    from engine.backtest.setup_study import render, run_study
+    from engine.db import connect
+    from engine.repository import Repository
+    from engine.scoring.loader import load_frames
+
+    settings = load_settings()
+    repo = Repository(connect())
+    latest = repo.latest_series_date("taiex")
+    # 預設只用調參區間，不碰保留驗證區間
+    start, end = periods(settings, latest)["full" if args.full else "tune"]
+    ids, _warnings = universe_for_backtest(settings, repo)
+    frames = load_frames(repo, ids, end, int((end - start).days / 365.25) + 2)
+    result = run_study(frames, start, end, settings.risk)
+    text = render(result)
+    print(text)
+    out = Path(args.out or "reports/setup-study.md")
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(text, encoding="utf-8")
+
+
 def cmd_backtest_data(args) -> None:
     from engine.backtest.runner import refresh_history
 
@@ -928,6 +952,11 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--out", help="報告輸出路徑（Markdown）")
     p.add_argument("--no-save", action="store_true", help="不寫入 backtest_runs")
     p.set_defaults(func=cmd_backtest)
+
+    p = sub.add_parser("setup-study", help="醞釀名單事件研究（預設調參區間）")
+    p.add_argument("--full", action="store_true", help="含保留驗證區間")
+    p.add_argument("--out", help="報告輸出路徑（Markdown）")
+    p.set_defaults(func=cmd_setup_study)
 
     p = sub.add_parser("backtest-data", help="抓取回測所需的大盤長期歷史")
     p.add_argument("--years", type=int, default=5)
