@@ -78,6 +78,7 @@ setup_watch:
   stop_lookback_days: 5        # 停損：近 5 日最低點
   stop_buffer: 0.01            #   再往下 1%
   max_stop: 0.08               #   停損距離最多 8%
+  min_reward_risk: 1.5         # 目標價的報酬風險比低於此值時加註「偏低」
   study:                       # 事件研究（setup-study 指令）
     entry_days: 5              # 列入後 5 個交易日內盤中觸及轉強價才算進場
     hold_days: 20              # 最多持有 20 個交易日

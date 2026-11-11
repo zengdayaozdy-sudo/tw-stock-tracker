@@ -183,7 +183,9 @@ def _signals_blocks(d: dict, compact: bool, max_blocked: int) -> list[str]:
             if b.get("entry_high") and not compact:
                 lines.append(f"  {'、'.join(b.get('triggers') or [])}")
                 lines.append(f"  買進 {_num(b['entry_low'])}–{_num(b['entry_high'])}｜停損 {_num(b['stop_loss'])}"
-                             f"｜目標 {_num(b['take_profit'])}｜成立時 {b.get('suggested_lots', 0)} 張")
+                             f"｜目標 {_num(b['take_profit'])}｜成立時 "
+                             + (f"{b['suggested_lots']} 張" if b.get("suggested_lots")
+                                else f"零股 {b.get('odd_shares', 0):,} 股"))
         if len(d["blocked"]) > max_blocked:
             lines.append(f"・另有 {len(d['blocked']) - max_blocked} 檔")
         blocks.append("\n".join(lines))

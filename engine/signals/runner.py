@@ -119,9 +119,10 @@ def run_signals(settings: Settings, repo: Repository, as_of: date, force: bool =
             if not fl["exclude"]:  # 只被大盤或族群擋下：附上參考價位，條件成立時可直接使用
                 lv = compute_levels(f.prices, f.valuations, as_of, risk, bearish=regime["tighten_stop"])
                 if lv is not None:
+                    sz = _watch_size(sid, lv.entry_high, lv.stop_loss)
                     item.update({"close": lv.close, "entry_low": lv.entry_low, "entry_high": lv.entry_high,
                                  "stop_loss": lv.stop_loss, "take_profit": lv.take_profit,
-                                 "suggested_lots": _watch_size(sid, lv.entry_high, lv.stop_loss)["lots"],
+                                 "suggested_lots": sz["lots"], "odd_shares": sz["odd_shares"],
                                  "size_factor": watch_factor})
             blocked.append(item)
             continue
@@ -208,12 +209,15 @@ def _setups(ids, frames, flags, scores, names, as_of, cfg, risk, size_fn, factor
             continue
         lv = setup_levels(f.prices, as_of, cfg, risk)
         size = size_fn(sid, lv["entry_high"], lv["stop_loss"])
+        notes = [r for r in fl["block"] if not r.startswith("大盤燈號偏空")]
+        if lv["reward_risk"] is not None and lv["reward_risk"] < cfg.get("min_reward_risk", 1.5):
+            notes.append(f"報酬風險比 {lv['reward_risk']:g} 偏低")
         score = scores.get((sid, "short")) or {}
         out.append({
             "stock_id": sid, "name": names.get(sid), "score": score.get("total"),
             "signs": sorted(signs), "sign_text": setup_text(signs), **lv,
             "suggested_lots": size["lots"], "odd_shares": size["odd_shares"], "size_factor": factor,
-            "notes": [r for r in fl["block"] if not r.startswith("大盤燈號偏空")],
+            "notes": notes,
         })
     out.sort(key=lambda x: (-len(x["signs"]), x["close"] / x["ma20"]))
     return out[: cfg["max_items"]]
