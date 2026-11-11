@@ -57,6 +57,23 @@ def trade_metrics(trades: list[dict]) -> dict[str, Any]:
     }
 
 
+REGIME_LABELS = {"normal": "一般", "rebound_confirmed": "反彈單", "rebound_attempt": "反彈試單"}
+
+
+def breakdown(trades: list[dict], key) -> dict[str, dict[str, Any]]:
+    """依盤勢模式或進場條件分組的交易統計（一筆交易觸發多個條件時，每個條件各計一次）。"""
+    groups: dict[str, list[dict]] = {}
+    for t in trades:
+        for k in key(t):
+            groups.setdefault(k, []).append(t)
+    out = {}
+    for k, ts in sorted(groups.items()):
+        m = trade_metrics(ts)
+        out[k] = {"trades": m["trades"], "win_rate": m["win_rate"], "expectancy_pct": m["expectancy_pct"],
+                  "pnl": round(sum(t["pnl"] for t in ts))}
+    return out
+
+
 def align(points: list[tuple[date, float]], start: date, end: date) -> list[tuple[date, float]]:
     return [(d, v) for d, v in points if start <= d <= end]
 
@@ -80,6 +97,8 @@ def build_metrics(result: dict, benchmarks: dict[str, list[tuple[date, float]]],
         "open_positions": len(result["open_positions"]),
         **exposure_metrics(result.get("exposure") or []),
         "skipped": result["skipped"],
+        "by_regime": breakdown(result["trades"], lambda t: [t.get("regime", "normal")]),
+        "by_trigger": breakdown(result["trades"], lambda t: t.get("triggers") or []),
         "anomalies": result.get("anomalies") or [],
         "benchmarks": {},
     }
@@ -133,6 +152,14 @@ def render_markdown(m: dict, period: str, plan_label: str, warnings: list[str], 
         "",
         "未下單：" + "、".join(f"{k} {v}" for k, v in m["skipped"].items()),
     ]
+    for title_, key, labels in (("盤勢模式", "by_regime", REGIME_LABELS), ("進場條件", "by_trigger", {})):
+        rows = m.get(key) or {}
+        if rows:
+            lines += ["", f"| {title_} | 交易 | 勝率 | 期望值 | 損益（元） |", "|---|---|---|---|---|"]
+            lines += [f"| {labels.get(k, k)} | {v['trades']} | {_ratio(v['win_rate'])} | "
+                      f"{_pct(v['expectancy_pct'], 2)} | {v['pnl']:,} |" for k, v in rows.items()]
+    if m.get("rebound_days"):
+        lines += ["", "盤勢模式天數：" + "、".join(f"{k} {v}" for k, v in m["rebound_days"].items())]
     if m.get("anomalies"):
         lines += ["", f"**模擬異常 {len(m['anomalies'])} 筆（結果不可信）**：" + "；".join(m["anomalies"][:5])]
     if params.get("overrides"):

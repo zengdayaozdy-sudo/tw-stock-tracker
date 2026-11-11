@@ -66,3 +66,18 @@ export function ago(d: Date | string | null | undefined, now: Date = new Date())
   if (hours < 24) return `${hours} 小時前`;
   return `${Math.floor(hours / 24)} 天前`;
 }
+
+/** 反彈偵測證據轉成短句（與 engine/filters/rebound.py evidence_text 一致） */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function reboundEvidence(evidence: Record<string, Record<string, any>> | undefined): string[] {
+  const pct = (x: number) => `${(x * 100).toFixed(1)}%`;
+  return Object.entries(evidence ?? {}).map(([k, e]) => {
+    if (k === "ftd") return `追蹤日 ${e.date}（反彈第 ${e.day} 天，漲 ${pct(e.gain)}）`;
+    if (k === "power_rally") return `急漲反彈（${e.days} 天漲 ${pct(e.gain)}）`;
+    if (k === "breadth_thrust") return `寬度衝刺 ${e.date}（上漲比率 EMA ${Number(e.ema).toFixed(2)}）`;
+    if (k === "breadth_recovery")
+      return `寬度回升（站上 20 日線 ${Math.round(e.low * 100)}% → ${Math.round(e.now * 100)}%）`;
+    if (k === "short_covering") return `外資期貨空單回補 ${Math.round(e.covered).toLocaleString("zh-TW")} 口`;
+    return e.label ?? k;
+  });
+}

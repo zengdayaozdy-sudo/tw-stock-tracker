@@ -141,3 +141,20 @@ def test_render_messages_compact_and_truncate():
     msgs = render_messages(_data(buy_signals=many), small, "https://example.com")
     assert len(msgs) == 3 and "完整內容請見網站：https://example.com" in msgs[-1]
     assert all(len(m) <= 400 for m in msgs)
+
+
+def test_render_rebound_mode():
+    market = {"light": "bearish", "group_strength": [], "inputs": {"total": -4},
+              "rebound": {"state": "confirmed", "points": 3,
+                          "rally": {"reason": "自 2026-11-06 低點反彈第 4 天，漲 16.2%"},
+                          "evidence": {"ftd": {"date": "2026-11-12", "day": 4, "gain": 0.021, "points": 2},
+                                       "power_rally": {"days": 4, "gain": 0.162, "points": 1}}}}
+    sig = _signal("2330", 85.0)
+    sig["detail"].update({"regime": "rebound_confirmed", "regime_label": "反彈單"})
+    regime = {"mode": "rebound_confirmed", "label": "反彈單", "size_factor": 0.5}
+    text = "\n".join(render_blocks(_data(market=market, regime=regime, buy_signals=[sig])))
+    assert "反彈偵測：反彈確認（3 點）｜自 2026-11-06 低點反彈第 4 天，漲 16.2%" in text
+    assert "・追蹤日 2026-11-12（反彈第 4 天，漲 2.1%）" in text
+    assert "大盤偏空但反彈確認：買進訊號以反彈單處理（部位 ×0.5、停損收緊）" in text
+    assert "大盤偏空：不發新買進訊號" not in text
+    assert "【反彈單】2330" in text

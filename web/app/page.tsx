@@ -3,7 +3,7 @@ import { CountUp } from "@/components/CountUp";
 import { DivBar } from "@/components/DivBar";
 import { Updated } from "@/components/Updated";
 import { BuySignalTable, Change, Panel, StockLink } from "@/components/ui";
-import { LIGHT_LABELS, dateLabel, money, num, timeTaipei, tone } from "@/lib/format";
+import { LIGHT_LABELS, dateLabel, money, num, reboundEvidence, timeTaipei, tone } from "@/lib/format";
 import { dataUpdates, holdingsDetail, lastHeartbeat, latestDate, latestJob, market, signalsOn } from "@/lib/queries";
 import { requireSession } from "@/lib/session";
 import { goToStock } from "./actions";
@@ -40,6 +40,9 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
   const value = holdings.reduce((a, h) => a + (h.close ?? h.avg_cost) * h.shares, 0);
   const cost = holdings.reduce((a, h) => a + h.avg_cost * h.shares, 0);
   const quality = fetchJob?.detail?.quality;
+  const rb = m?.rebound;
+  const rebounding = rb?.state === "attempt" || rb?.state === "confirmed";
+  const regime: string | undefined = signalJob?.detail?.regime;
 
   return (
     <>
@@ -113,7 +116,33 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
           ) : (
             <p className="empty">今日大盤燈號尚未計算</p>
           )}
-          {m?.light === "bearish" && <p className="panel-note">偏空：不發新買進訊號、停損收緊、建議降低部位</p>}
+          {rb && (
+            <ul className="votes rebound">
+              <li>
+                <span className={`vote-chip ${rebounding ? "up" : ""}`}>{rebounding ? `+${rb.points}` : "0"}</span>
+                <span className="vote-label">反彈偵測</span>
+                <span className="vote-reason">
+                  <span className={`tag ${rb.state === "confirmed" ? "block" : rb.state === "attempt" ? "warn" : ""}`}>
+                    {rb.label}
+                  </span>{" "}
+                  {rb.rally?.reason}
+                  {reboundEvidence(rb.evidence).map((t) => (
+                    <span key={t} className="rebound-evidence">
+                      {t}
+                    </span>
+                  ))}
+                </span>
+              </li>
+            </ul>
+          )}
+          {m?.light === "bearish" &&
+            (regime === "rebound_confirmed" || regime === "rebound_attempt" ? (
+              <p className="panel-note">
+                偏空但{rb?.label}：買進訊號以{regime === "rebound_confirmed" ? "反彈單" : "反彈試單"}處理，部位縮小、停損收緊
+              </p>
+            ) : (
+              <p className="panel-note">偏空：不發新買進訊號、停損收緊、建議降低部位</p>
+            ))}
         </Panel>
 
         <Panel title="系統狀態" meta={<Link href="/status">排程紀錄</Link>}>
@@ -165,7 +194,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
 
       <div className="gap" />
       <Panel title="今日買進訊號" meta={<>{buys.length} 筆<span className="sep">｜</span><Updated at={upd.signals} /></>}>
-        {buys.length === 0 && m?.light === "bearish" ? (
+        {buys.length === 0 && m?.light === "bearish" && !rebounding ? (
           <p className="empty">大盤燈號偏空，今日不發新買進訊號</p>
         ) : (
           <BuySignalTable signals={buys} />

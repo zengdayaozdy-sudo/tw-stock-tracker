@@ -10,8 +10,10 @@ from typing import Any
 
 from engine.config import Settings
 from engine.filters.market_light import LIGHT_LABELS
+from engine.filters.rebound import STATE_LABELS, evidence_text
 from engine.pipeline import universe
 from engine.repository import Repository
+from engine.signals.regime import market_regime
 
 WEEKDAYS = "一二三四五六日"
 HORIZON_LABELS = {"short": "短線", "long": "中長線"}
@@ -38,10 +40,13 @@ def report_data(settings: Settings, repo: Repository, as_of: date) -> dict[str, 
     signal_job = repo.latest_job("signals", as_of)
     fetch_job = repo.latest_job("fetch", as_of)
     quality = (fetch_job[1].get("quality") if fetch_job else None) or {}
+    rebound = (market or {}).get("rebound") or {}
+    regime = market_regime(market["light"], rebound.get("state"), settings.risk) if market else None
     return {
         "date": as_of,
         "plan": settings.plan.label,
         "market": market,
+        "regime": regime,
         "groups": ranked[: cfg["top_groups"]],
         "weak_groups": [g["name"] for g in ranked if g.get("weak")],
         "group_leaders": group_leaders,
@@ -80,8 +85,22 @@ def _market_block(d: dict) -> str:
         if key == "total" or not isinstance(item, dict):
             continue
         lines.append(f"・{item.get('label', key)}：{item.get('reason')}（{item.get('vote', 0):+d}）")
+    rb = m.get("rebound") or {}
+    if rb:
+        state = STATE_LABELS.get(rb.get("state"), rb.get("state"))
+        head = f"反彈偵測：{state}" + (f"（{rb.get('points', 0)} 點）" if rb.get("state") != "none" else "")
+        rally = rb.get("rally") or {}
+        if rally.get("reason"):
+            head += f"｜{rally['reason']}"
+        lines.append(head)
+        lines += [f"・{t}" for t in evidence_text(rb)]
+    regime = d.get("regime") or {}
     if m["light"] == "bearish":
-        lines.append("大盤偏空：不發新買進訊號、停損收緊、建議降低部位")
+        if regime.get("mode") in ("rebound_confirmed", "rebound_attempt"):
+            lines.append(f"大盤偏空但{STATE_LABELS[rb['state']]}：買進訊號以{regime['label']}處理"
+                         f"（部位 ×{regime['size_factor']:g}、停損收緊）")
+        else:
+            lines.append("大盤偏空：不發新買進訊號、停損收緊、建議降低部位")
     return "\n".join(lines)
 
 
@@ -110,8 +129,9 @@ def _signal_full(s: dict) -> str:
     det = s["detail"] or {}
     sc = det.get("score") or {}
     sz = det.get("sizing") or {}
+    tag = f"【{det['regime_label']}】" if det.get("regime") not in (None, "normal") else ""
     lines = [
-        f"{s['stock_id']} {det.get('name') or ''}｜{HORIZON_LABELS[s['horizon']]} {sc.get('total', 0):.1f} 分"
+        f"{tag}{s['stock_id']} {det.get('name') or ''}｜{HORIZON_LABELS[s['horizon']]} {sc.get('total', 0):.1f} 分"
         f"（基 {sc.get('fundamental', 0):.0f}／技 {sc.get('technical', 0):.0f}／籌 {sc.get('chips', 0):.0f}）",
         f"收盤 {_num(det.get('close'))}｜{'、'.join(det.get('trigger_text') or [])}",
     ]
@@ -136,7 +156,8 @@ def _signal_compact(s: dict) -> str:
     total = (det.get("score") or {}).get("total", 0)
     lots = f"{s['suggested_lots']} 張" if s["suggested_lots"] else (
         f"零股 {(det.get('sizing') or {}).get('odd_shares', 0)} 股")
-    return (f"{s['stock_id']} {det.get('name') or ''} {HORIZON_LABELS[s['horizon']][:1]}{total:.0f}｜"
+    tag = "反彈" if det.get("regime") not in (None, "normal") else ""
+    return (f"{tag}{s['stock_id']} {det.get('name') or ''} {HORIZON_LABELS[s['horizon']][:1]}{total:.0f}｜"
             f"{_num(s['entry_low'])}–{_num(s['entry_high'])}｜損 {_num(s['stop_loss'])}"
             f"｜利 {_num(s['take_profit'])}｜{lots}")
 

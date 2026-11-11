@@ -16,6 +16,7 @@ from engine.scoring.loader import load_frames, load_groups
 from engine.scoring.model import reasons
 from engine.signals.entry import entry_triggers, trigger_text
 from engine.signals.levels import compute_levels
+from engine.signals.regime import market_regime, scaled_position_cfg
 from engine.signals.selection import select
 from engine.signals.sizing import position_size
 
@@ -70,6 +71,8 @@ def run_signals(settings: Settings, repo: Repository, as_of: date, force: bool =
     risk, scoring = settings.risk, settings.scoring
     flags = screen_summary(repo, as_of)
     light = repo.market_light(as_of)
+    rebound = repo.market_rebound(as_of) or {}
+    regime = market_regime(light, rebound.get("state"), risk)
     groups = load_groups(repo)
     scores = repo.score_rows(as_of, ids)
     top_percent = settings.enabled("top_percent_list")
@@ -87,13 +90,13 @@ def run_signals(settings: Settings, repo: Repository, as_of: date, force: bool =
     exposures = group_exposures(holdings, stock_groups)
     names = repo.stock_names(candidates)
     frames = load_frames(repo, candidates, as_of, risk["pe_river"]["lookback_years"]) if candidates else {}
-    position_cfg = risk["position"]
+    position_cfg = scaled_position_cfg(risk["position"], regime["size_factor"])
 
     signals: list[dict] = []
     blocked: list[dict] = []
     for sid in candidates:
         f = frames[sid]
-        triggers = entry_triggers(f.prices, f.chips, as_of, risk)
+        triggers = entry_triggers(f.prices, f.chips, as_of, risk, f.benchmark, regime["entry_conditions"])
         if not triggers:
             continue
         fl = flags.get(sid, {"exclude": [], "block": [], "warn": []})
@@ -101,7 +104,7 @@ def run_signals(settings: Settings, repo: Repository, as_of: date, force: bool =
             blocked.append({"stock_id": sid, "name": names.get(sid), "triggers": trigger_text(triggers),
                             "reasons": fl["exclude"] + fl["block"]})
             continue
-        levels = compute_levels(f.prices, f.valuations, as_of, risk, bearish=light == "bearish")
+        levels = compute_levels(f.prices, f.valuations, as_of, risk, bearish=regime["tighten_stop"])
         if levels is None:
             continue
         exposure = max((exposures.get(g, 0.0) for g in stock_groups.get(sid, [])), default=0.0)
@@ -113,6 +116,8 @@ def run_signals(settings: Settings, repo: Repository, as_of: date, force: bool =
             score = scores[(sid, h)]
             why = reasons(score["breakdown"])
             text = f"{label} {score['total']:.1f} 分；{'、'.join(trigger_text(triggers))}"
+            if regime["mode"] != "normal":
+                text = f"{regime['label']}（部位 ×{regime['size_factor']:g}）｜" + text
             if why:
                 text += f"；高分理由：{'、'.join(why)}"
             signals.append({
@@ -139,7 +144,12 @@ def run_signals(settings: Settings, repo: Repository, as_of: date, force: bool =
                     "sizing": size,
                     "capital": capital,
                     "market_light": light,
-                    "warnings": fl["warn"],
+                    "regime": regime["mode"],
+                    "regime_label": regime["label"],
+                    "size_factor": regime["size_factor"],
+                    "rebound": rebound.get("state"),
+                    # 大盤反彈模式的提示已由 regime 欄位表示，不在每檔重複
+                    "warnings": [w for w in fl["warn"] if not w.startswith("大盤偏空")],
                     "forced": not ok,
                 },
             })
@@ -150,6 +160,8 @@ def run_signals(settings: Settings, repo: Repository, as_of: date, force: bool =
         "status": "ok" if ok else "forced",
         "reason": gate_reason,
         "market_light": light,
+        "regime": regime["mode"],
+        "rebound": rebound.get("state"),
         "candidates": len(candidates),
         "signals": signals,
         "blocked": blocked,

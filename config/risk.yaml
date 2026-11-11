@@ -51,6 +51,33 @@ volume_breakout_ratio: 1.5         # 成交量 ≥ 20 日均量 1.5 倍
 golden_cross_ma: [5, 20]           # 黃金交叉：5 日線由下往上穿越 20 日線
 breakout_days: 20
 
+# 領先型進場條件（反彈期間由盤勢模式加入，見 rebound_mode）
+oversold_reversal:
+  lookback_days: 5             # 近 5 日內
+  bias: 0.10                   # 曾低於 20 日線 10% 以上
+  volume_ratio: 1.0            # 今天成交量 ≥ 20 日均量
+rs_new_high:
+  lookback_days: 120           # 股價÷加權指數創 120 日新高
+  price_gap: 0.05              # 股價本身仍低於 120 日高點 5% 以上（RS 先於股價創高）
+reclaim_ma20:
+  slope_days: 5
+  max_ma_decline: 0.01         # 20 日線 5 日內下彎超過 1% 不算（仍在下跌趨勢中）
+
+rebound_mode:
+  # 盤勢模式（engine/signals/regime.py）：燈號偏空時依反彈狀態放行買進訊號
+  enabled: true
+  confirmed:                   # 反彈確認（追蹤日、寬度衝刺等累積 2 點以上）
+    allow: true
+    size_factor: 0.5           # 單筆風險與單檔上限 × 0.5
+  attempt:                     # 反彈嘗試（自低點反彈但證據不足）
+    allow: true
+    size_factor: 0.25          # 試單
+  # 反彈期間（不論燈號）額外檢查的領先型進場條件
+  entry_conditions:
+    - oversold_reversal
+    - rs_new_high
+    - reclaim_ma20
+
 costs:
   commission_rate: 0.001425    # 手續費
   commission_discount: 1.0     # 券商折扣

@@ -6,7 +6,7 @@ import "server-only";
 import type { McpServer } from "@modelcontextprotocol/server";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { todayTaipei } from "../format";
+import { reboundEvidence, todayTaipei } from "../format";
 import * as m from "../mutations";
 import * as q from "../queries";
 import { adjustPoints, tradeStats, type Trade } from "../trading";
@@ -99,7 +99,15 @@ export function registerTools(server: McpServer) {
       return json({
         date: d,
         market: mk
-          ? { light: LIGHT[mk.light] ?? mk.light, total: mk.total, inputs: mk.inputs }
+          ? {
+              light: LIGHT[mk.light] ?? mk.light,
+              total: mk.total,
+              inputs: mk.inputs,
+              rebound: mk.rebound
+                ? { state: mk.rebound.label, points: mk.rebound.points, rally: mk.rebound.rally?.reason,
+                    evidence: reboundEvidence(mk.rebound.evidence), regime: signalJob?.detail?.regime ?? null }
+                : null,
+            }
           : "當日沒有大盤燈號資料",
         groups: (mk?.groups ?? [])
           .filter((g) => g.rank)

@@ -473,6 +473,8 @@ tbody tr:nth-child(n + 9), .watch-list > li:nth-child(n + 9) { animation-delay: 
   background: color-mix(in srgb, var(--line) 70%, transparent); color: var(--faint);
 }
 .vote-chip.up { background: var(--block-bg); color: var(--up); }
+.votes.rebound { border-top: 1px solid var(--line); padding-top: 4px; }
+.rebound-evidence { display: block; color: var(--muted); font-size: 13px; margin-top: 2px; }
 .vote-chip.down { background: var(--ok-bg); color: var(--down); }
 .vote-label { font-size: 14px; }
 .vote-reason { color: var(--muted); font-size: 13px; }

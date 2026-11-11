@@ -125,3 +125,33 @@ def test_blocked_by_market_and_group_cap(repo):
     by = {s["stock_id"]: s for s in result["signals"]}
     assert by["2330"]["suggested_lots"] == 0
     assert by["2330"]["detail"]["sizing"]["limited_by"] == "族群上限"
+
+
+def test_rebound_mode_releases_signals_with_smaller_size(repo):
+    """燈號偏空但反彈確認：不擋買進，改以反彈單（部位減半、停損收緊）發出。"""
+    _job(repo.conn)
+    repo.upsert("market", [{"date": AS_OF, "light": "bearish", "inputs": {}, "group_strength": [],
+                            "rebound": {"state": "confirmed", "points": 2, "evidence": {}}}])
+    repo.replace_flags(AS_OF, "market", [{"stock_id": s, "kind": "warn", "reason": "大盤偏空，反彈確認"}
+                                          for s in STOCKS])
+    repo.conn.commit()
+    result = run_signals(load_settings("free"), repo, AS_OF)
+    assert result["regime"] == "rebound_confirmed"
+    by = {s["stock_id"]: s for s in result["signals"]}
+    assert set(by) == {"2330", "2303"}
+    s = by["2330"]
+    assert s["detail"]["regime"] == "rebound_confirmed" and s["detail"]["size_factor"] == 0.5
+    assert s["reason"].startswith("反彈單（部位 ×0.5）")
+    # 單檔上限 12% × 0.5 = 6 萬 / 107.5 → 不足一張，改零股
+    assert s["suggested_lots"] == 0 and s["detail"]["sizing"]["odd_shares"] == 558
+    assert "大盤偏空收緊" in s["detail"]["levels"]["stop_basis"]
+
+
+def test_rebound_none_keeps_block(repo):
+    _job(repo.conn)
+    repo.upsert("market", [{"date": AS_OF, "light": "bearish", "inputs": {}, "group_strength": [],
+                            "rebound": {"state": "none"}}])
+    repo.replace_flags(AS_OF, "market", [{"stock_id": s, "kind": "block", "reason": "大盤燈號偏空"} for s in STOCKS])
+    repo.conn.commit()
+    result = run_signals(load_settings("free"), repo, AS_OF)
+    assert result["regime"] == "blocked" and result["signals"] == []

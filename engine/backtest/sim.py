@@ -20,6 +20,7 @@ import pandas as pd
 from engine.backtest.plan import DayPlan
 from engine.portfolio.monitor import check_holding, effective_stop
 from engine.signals.levels import round_tick
+from engine.signals.regime import scaled_position_cfg
 from engine.signals.sizing import position_size
 
 
@@ -164,7 +165,8 @@ class PlanStrategy(bt.Strategy):
             if c.stock_id in self.book or c.stock_id in self.pending:
                 continue
             lv = c.levels
-            size = position_size(capital, lv.entry_high, lv.stop_loss, pos_cfg, holdings_count=count,
+            size = position_size(capital, lv.entry_high, lv.stop_loss, scaled_position_cfg(pos_cfg, c.size_factor),
+                                 holdings_count=count,
                                  group_exposure=self._group_exposure(c.stock_id))
             shares = size["lots"] * lot or (size["odd_shares"] if self.p.allow_odd else 0)
             if shares <= 0:
@@ -196,6 +198,7 @@ class PlanStrategy(bt.Strategy):
                 "opened": d, "shares": ex.size, "cost_total": cost_total, "cost_per_share": cost_total / ex.size,
                 "stop": stop, "target": c.levels.take_profit, "highest": ex.price, "horizons": c.horizons,
                 "entry_price": ex.price, "triggers": list(c.triggers), "score": c.score,
+                "regime": c.regime,
             }
             return  # 停損單在下一次 next() 掛出
         if self.getposition(order.data).size < 0:
@@ -219,7 +222,7 @@ class PlanStrategy(bt.Strategy):
             "closed": d.isoformat(), "days": (d - info["opened"]).days, "shares": size,
             "entry": round(info["entry_price"], 2), "exit": round(ex.price, 2),
             "pnl": round(pnl, 2), "pnl_pct": round(pnl / info["cost_total"], 6),
-            "reason": reason, "horizons": info["horizons"], "triggers": info["triggers"],
+            "reason": reason, "horizons": info["horizons"], "triggers": info["triggers"], "regime": info["regime"],
         })
 
     def stop(self):

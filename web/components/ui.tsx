@@ -95,6 +95,11 @@ export function BuySignalTable({ signals, showDate = false }: { signals: Signal[
                     <div className="small muted">高分理由：{s.detail.high_score_reasons.join("、")}</div>
                   ) : null}
                   <span className="tags">
+                    {s.detail?.regime && s.detail.regime !== "normal" && (
+                      <span className="tag block">
+                        {s.detail.regime_label} ×{s.detail.size_factor}
+                      </span>
+                    )}
                     {[...(s.detail?.warnings ?? []), ...(s.detail?.sizing?.notes ?? [])].map((w: string) => (
                       <span key={w} className="tag warn">
                         {w}

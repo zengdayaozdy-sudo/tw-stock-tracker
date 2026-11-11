@@ -38,6 +38,7 @@ market_light:
   taiex_vs_ma60:
     ma_days: 60
     band: 0.01                  # 收盤高於季線 1% 以上偏多、低於 1% 以上偏空
+    recovery_ma: 20             # 低於季線但已站回 20 日線時改判中性（null 停用）
   sox_trend:
     ma_days: 20
     slope_days: 5               # 均線方向：與 5 個交易日前比較
@@ -46,15 +47,57 @@ market_light:
     avg_days: 20
     band: 0.02                  # 溢價高於近 20 日平均 2 個百分點以上偏多
     min_observations: 10
+    adr_trend_days: 5           # 溢價低於平均時，ADR（換算台幣）5 日沒有下跌＝台股補漲造成，改判中性（null 停用）
   foreign_futures_oi:
     bullish_level: 0            # 外資台指期淨未平倉（口）≥ 此值偏多
     bearish_level: -40000       # ≤ 此值偏空
     change_days: 5              # 介於兩者之間時看 5 日變化
     change_lots: 5000
+    cover_lots: 8000            # 淨空單低於 bearish_level 但較 5 日內最大空單回補 8,000 口以上，改判中性（null 停用）
   twd_trend:
     change_days: 20
     band: 0.005                 # 美元兌台幣 20 日跌 0.5% 以上（台幣升值）偏多
   history_days: 200             # 每次至少保留多少日曆天的時間序列
+
+rebound:
+  # 大盤反彈偵測（領先型，見 engine/filters/rebound.py 與 docs/rebound-research.md）
+  # 燈號偏空時，反彈確認／反彈嘗試可放行買進訊號，以反彈單處理（部位縮小、停損收緊，見 risk.yaml rebound_mode）
+  enabled: true
+  correction:
+    lookback_days: 60           # 在近 60 個交易日找波段高點
+    min_depth: 0.08             # 高點到低點跌幅至少 8% 才算修正
+  rally:
+    attempt_min_gain: 0.02      # 自低點反彈 2% 以上才算反彈嘗試
+    max_days: 25                # 低點後超過 25 個交易日仍未確認，視為失敗的反彈
+  ftd:                          # O'Neil 追蹤日：反彈第 4 天以後，指數單日大漲且量增
+    min_day: 4
+    max_day: 15
+    min_gain: 0.0125
+    require_volume_up: true     # 成交量（自選股合計）高於前一日
+    points: 2
+  power_rally:                  # 台股常見的 V 轉：自低點 5 個交易日內急漲
+    max_days: 5
+    min_gain: 0.06
+    points: 1
+  breadth_thrust:               # Zweig 寬度衝刺：上漲家數比率 10 日 EMA 由 0.40 以下衝上 0.615 以上
+    ema_span: 10
+    low: 0.40
+    high: 0.615
+    within_days: 10
+    recent_days: 10             # 衝刺發生在最近 10 個交易日內才計入
+    points: 2
+  breadth_recovery:             # 站上 20 日線的比例：近期曾低於 20%，今天回到 50% 以上
+    ma_days: 20
+    oversold: 0.20
+    recovered: 0.50
+    lookback_days: 15
+    points: 1
+  short_covering:               # 外資台指期淨空單自 10 日內最大值回補
+    lookback_days: 10
+    min_lots: 10000
+    points: 1
+  min_stocks: 10                # 寬度指標至少要有幾檔股票
+  confirm_points: 2             # 累積 2 點＝反彈確認
 
 group_strength:
   lookback_days: [20, 60]       # 近 1／3 個月（交易日）

@@ -14,7 +14,7 @@ UPSERT_SPECS: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
     "financials": (("stock_id", "period_type", "period"), ("published_date", "metrics")),
     "scores": (("stock_id", "date", "horizon"), ("total", "fundamental", "technical", "chips", "breakdown", "status")),
     "market_series": (("series", "date"), ("value",)),
-    "market": (("date",), ("light", "inputs", "group_strength")),
+    "market": (("date",), ("light", "inputs", "group_strength", "rebound")),
     "events": (("stock_id", "date", "event_type"), ("note", "source")),
     "price_adjustments": (("stock_id", "date", "kind"), ("before_price", "after_price")),
 }
@@ -347,6 +347,24 @@ class Repository:
                 }
             return out
 
+    def market_rebound(self, on_date: date) -> dict | None:
+        with self.conn.cursor() as cur:
+            cur.execute("SELECT rebound FROM market WHERE date = %s", (on_date,))
+            row = cur.fetchone()
+            return row[0] if row else None
+
+    def price_panel(self, ids: list[str], start: date, end: date) -> list[tuple[str, date, float, float]]:
+        """寬度指標用：(代號, 日期, 收盤, 成交量)，未還原除權息。"""
+        if not ids:
+            return []
+        with self.conn.cursor() as cur:
+            cur.execute(
+                "SELECT stock_id, date, close, volume FROM daily_prices "
+                "WHERE stock_id = ANY(%s) AND date BETWEEN %s AND %s AND close IS NOT NULL ORDER BY date",
+                (ids, start, end),
+            )
+            return [(s, d, float(c), float(v or 0)) for s, d, c, v in cur.fetchall()]
+
     def market_light(self, on_date: date) -> str | None:
         with self.conn.cursor() as cur:
             cur.execute("SELECT light FROM market WHERE date = %s", (on_date,))
@@ -390,9 +408,10 @@ class Repository:
     # ---------- 通知（第 6 階段） ----------
     def market_row(self, on_date: date) -> dict | None:
         with self.conn.cursor() as cur:
-            cur.execute("SELECT light, inputs, group_strength FROM market WHERE date = %s", (on_date,))
+            cur.execute("SELECT light, inputs, group_strength, rebound FROM market WHERE date = %s", (on_date,))
             row = cur.fetchone()
-            return {"light": row[0], "inputs": row[1] or {}, "group_strength": row[2] or []} if row else None
+            return ({"light": row[0], "inputs": row[1] or {}, "group_strength": row[2] or [], "rebound": row[3]}
+                    if row else None)
 
     def signals_on(self, on_date: date, side: str) -> list[dict]:
         cols = ("stock_id", "horizon", "triggers", "entry_low", "entry_high", "stop_loss", "take_profit",

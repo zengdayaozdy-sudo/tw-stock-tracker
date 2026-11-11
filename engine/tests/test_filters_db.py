@@ -249,3 +249,28 @@ def test_collect_news_falls_back_to_openapi(repo):
 
     out = collect_news(load_settings("free"), repo, FakeExchange(), None, ["1101", "2330"], AS_OF)
     assert out["announcement_source"] == "openapi" and out["collected"] == 2
+
+
+class VShapeExchange(FakeExchange):
+    """平盤 → 跌 15% → 反彈 5 天（第 4 天大漲 2%）。"""
+
+    def taiex_month(self, month):
+        vals = [20000.0] * 65 + [20000 * (1 - 0.15 * i / 20) for i in range(1, 21)]
+        for r in (0.005, 0.004, 0.003, 0.02, 0.01):
+            vals.append(vals[-1] * (1 + r))
+        return [{"series": "taiex", "date": d.date(), "value": v} for d, v in zip(DATES, vals, strict=True)
+                if d.month == month.month and d.year == month.year]
+
+
+def test_filters_bearish_with_confirmed_rebound_warns_instead_of_block(repo):
+    settings = load_settings("free")
+    settings.filters["rebound"]["ftd"]["require_volume_up"] = False  # 假資料成交量固定
+    result = run_filters(settings, repo, VShapeExchange(), FakeFinMind(bearish=True), AS_OF)
+    assert result["light"] == "bearish"
+    assert result["rebound"] == "confirmed" and result["regime"] == "rebound_confirmed"
+    assert any(t.startswith("追蹤日") for t in result["rebound_evidence"])
+    summary = screen_summary(repo, AS_OF)
+    assert not any("大盤燈號偏空" in summary.get(s, {}).get("block", []) for s in STOCKS)
+    assert all(any("反彈確認" in w for w in summary[s]["warn"]) for s in STOCKS)
+    row = repo.market_row(AS_OF)
+    assert row["rebound"]["state"] == "confirmed" and row["rebound"]["rally"]["day"] == 5

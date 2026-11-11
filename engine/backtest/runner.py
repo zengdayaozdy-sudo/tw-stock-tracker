@@ -208,6 +208,11 @@ def run_backtest(settings: Settings, repo: Repository, period: str = "tune", end
     metrics["universe"] = len(frames)
     metrics["bearish_days"] = sum(1 for p in plans.values() if p.light == "bearish")
     metrics["candidate_days"] = sum(1 for p in plans.values() if p.candidates)
+    rebound_days: dict[str, int] = {}
+    for p in plans.values():
+        if p.regime != "normal":
+            rebound_days[p.regime] = rebound_days.get(p.regime, 0) + 1
+    metrics["rebound_days"] = rebound_days
     params = {"overrides": overrides or {}}
     report = render_markdown(metrics, period, settings.plan.label, warnings, params) + f"\n指紋：`{fp}`\n"
     run_id = None

@@ -125,8 +125,17 @@ export type GroupStrength = {
 
 export type LightInput = { label: string; vote: number; reason: string; missing?: boolean };
 
+export type Rebound = {
+  state: "none" | "attempt" | "confirmed";
+  label: string;
+  points: number;
+  rally: { reason?: string; day?: number; gain?: number; low_date?: string; depth?: number; active?: boolean };
+  evidence: Record<string, Record<string, any>>; // eslint-disable-line @typescript-eslint/no-explicit-any
+  breadth: { adv_ratio?: number | null; pct_above_ma?: number | null; count?: number };
+};
+
 export async function market(date: string) {
-  const rows = await db()`SELECT light, inputs, group_strength FROM market WHERE date = ${date}`;
+  const rows = await db()`SELECT light, inputs, group_strength, rebound FROM market WHERE date = ${date}`;
   if (!rows.length) return null;
   const inputs = rows[0].inputs as Record<string, LightInput | number>;
   return {
@@ -136,6 +145,7 @@ export async function market(date: string) {
       .filter(([k, v]) => k !== "total" && typeof v === "object")
       .map(([k, v]) => ({ key: k, ...(v as LightInput) })),
     groups: (rows[0].group_strength as GroupStrength[]) ?? [],
+    rebound: (rows[0].rebound as Rebound | null) ?? null,
   };
 }
 

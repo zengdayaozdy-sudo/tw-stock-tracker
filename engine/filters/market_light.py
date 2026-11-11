@@ -74,7 +74,15 @@ def taiex_vs_ma60(taiex: pd.Series, as_of: date, cfg: dict) -> dict:
     band = cfg["band"]
     vote = 1 if gap > band else -1 if gap < -band else 0
     where = "高於" if gap >= 0 else "低於"
-    return _result(vote, f"收盤 {close:,.0f}，{where}季線 {abs(gap):.1%}", round(gap, 4), ma=round(ma, 2))
+    reason = f"收盤 {close:,.0f}，{where}季線 {abs(gap):.1%}"
+    # 季線是 60 日均價，急跌後的反彈要很久才站得回去；已站回較短均線時改判中性，避免燈號落後太多
+    r = cfg.get("recovery_ma")
+    if vote < 0 and r and len(s) >= r:
+        ma_r = float(s.iloc[-r:].mean())
+        if close > ma_r:
+            return _result(0, f"{reason}，但已站回 {r} 日線 {ma_r:,.0f}", round(gap, 4), ma=round(ma, 2),
+                           recovery_ma=round(ma_r, 2))
+    return _result(vote, reason, round(gap, 4), ma=round(ma, 2))
 
 
 def sox_trend(sox: pd.Series, as_of: date, cfg: dict) -> dict:
@@ -120,7 +128,20 @@ def tsmc_adr_premium(adr: pd.Series, usd_twd: pd.Series, tw2330: pd.Series, as_o
     diff = now - avg
     band = cfg["band"]
     vote = 1 if diff > band else -1 if diff < -band else 0
-    return _result(vote, f"溢價 {now:.1%}，近 {len(hist)} 日平均 {avg:.1%}", round(now, 4), average=round(avg, 4))
+    reason = f"溢價 {now:.1%}，近 {len(hist)} 日平均 {avg:.1%}"
+    # 溢價縮小有兩種來源：ADR 下跌（外資在美股看壞）或台股本地上漲追上 ADR。
+    # 後者是台股轉強，不應投空；只有 ADR 換算台幣後也在下跌時才算偏空。
+    k = cfg.get("adr_trend_days")
+    if vote < 0 and k:
+        adr_twd = pd.Series({d: float(adr[adr.index < d].iloc[-1]) * float(fx[fx.index <= d].iloc[-1])
+                             for d in p.index[-k - 1:]}, dtype=float)
+        if len(adr_twd) > k:
+            change = float(adr_twd.iloc[-1]) / float(adr_twd.iloc[0]) - 1
+            if change >= 0:
+                return _result(0, f"{reason}；ADR {k} 日上漲 {change:.1%}，溢價收斂來自台股補漲", round(now, 4),
+                               average=round(avg, 4), adr_change=round(change, 4))
+            reason += f"；ADR {k} 日下跌 {abs(change):.1%}"
+    return _result(vote, reason, round(now, 4), average=round(avg, 4))
 
 
 def foreign_futures_oi(oi: pd.Series, as_of: date, cfg: dict) -> dict:
@@ -131,9 +152,15 @@ def foreign_futures_oi(oi: pd.Series, as_of: date, cfg: dict) -> dict:
     text = f"淨{'多' if level >= 0 else '空'}單 {abs(level):,.0f} 口"
     if level >= cfg["bullish_level"]:
         return _result(1, text, level)
-    if level <= cfg["bearish_level"]:
-        return _result(-1, text, level)
     k = cfg["change_days"]
+    if level <= cfg["bearish_level"]:
+        # 空單水位仍高但正在大幅回補：避險降溫，改判中性
+        cover = cfg.get("cover_lots")
+        if cover and len(s) > k:
+            change = level - float(s.iloc[-1 - k:].min())
+            if change >= cover:
+                return _result(0, f"{text}，較 {k} 日內最大空單回補 {change:,.0f} 口", level, change=change)
+        return _result(-1, text, level)
     if len(s) <= k:
         return _result(0, f"{text}，歷史不足無法看變化", level)
     change = level - float(s.iloc[-1 - k])

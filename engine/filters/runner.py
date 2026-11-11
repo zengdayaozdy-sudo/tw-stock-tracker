@@ -14,9 +14,11 @@ from engine.filters.groups import group_strength, weak_group_flags
 from engine.filters.liquidity import AVG_DAYS, liquidity_flags
 from engine.filters.market_light import MarketLight, compute_light
 from engine.filters.news import dedup_key, news_flags, parse_rss
+from engine.filters.rebound import Rebound, breadth_frame, compute_rebound, evidence_text
 from engine.pipeline import universe
 from engine.repository import Repository
 from engine.scoring.loader import load_groups
+from engine.signals.regime import market_regime
 from engine.sources import finmind as fm
 
 log = logging.getLogger(__name__)
@@ -175,6 +177,28 @@ def compute_market_light(settings: Settings, repo: Repository, as_of: date) -> M
     return compute_light(series, as_of, cfg)
 
 
+# ---------- 步驟 6：大盤反彈偵測 ----------
+
+def compute_market_rebound(settings: Settings, repo: Repository, ids: list[str], as_of: date) -> Rebound | None:
+    cfg = settings.filters.get("rebound") or {}
+    if not cfg.get("enabled"):
+        return None
+    days = max(cfg["correction"]["lookback_days"] + cfg["rally"]["max_days"], 80)
+    start = as_of - timedelta(days=int(days * 1.6) + 30)
+    panel = repo.price_panel(ids, start, as_of)
+    closes = pd.DataFrame(columns=ids, dtype=float)
+    volume = pd.Series(dtype=float)
+    if panel:
+        df = pd.DataFrame(panel, columns=["stock_id", "date", "close", "volume"])
+        df["date"] = pd.to_datetime(df["date"])
+        closes = df.pivot(index="date", columns="stock_id", values="close").sort_index()
+        volume = df.groupby("date")["volume"].sum().sort_index()
+    breadth = breadth_frame(closes, cfg["breadth_recovery"]["ma_days"])
+    taiex = pd.Series({pd.Timestamp(d): v for d, v in repo.series("taiex", start, as_of)}, dtype=float).sort_index()
+    oi = pd.Series({pd.Timestamp(d): v for d, v in repo.series("foreign_tx_oi", start, as_of)}, dtype=float)
+    return compute_rebound(taiex, breadth, volume, oi.sort_index(), as_of, cfg)
+
+
 # ---------- 步驟 6：族群強弱 ----------
 
 def compute_group_strength(settings: Settings, repo: Repository, as_of: date) -> tuple[list[dict], set[str]]:
@@ -254,15 +278,22 @@ def run_filters(settings: Settings, repo: Repository, exchange, finmind, as_of: 
         cal = TradingCalendar()
 
     light = compute_market_light(settings, repo, as_of)
+    rebound = compute_market_rebound(settings, repo, ids, as_of)
     strength, scope = compute_group_strength(settings, repo, as_of)
     repo.upsert("market", [{
         "date": as_of, "light": light.light, "inputs": light.to_inputs_json(), "group_strength": strength,
+        "rebound": rebound.to_json() if rebound else None,
     }])
 
+    regime = market_regime(light.light, rebound.state if rebound else None, settings.risk)
     market_rows = []
-    if light.light == "bearish":
+    if regime["mode"] == "blocked":
         market_rows = [{"stock_id": sid, "kind": "block", "reason": "大盤燈號偏空",
                         "detail": {"total": light.total}} for sid in ids]
+    elif regime["mode"] != "normal":
+        reason = f"大盤偏空，{rebound.label}：以{regime['label']}處理（部位 ×{regime['size_factor']:g}、停損收緊）"
+        market_rows = [{"stock_id": sid, "kind": "warn", "reason": reason,
+                        "detail": {"total": light.total, "rebound": rebound.state}} for sid in ids]
     repo.replace_flags(as_of, "market", market_rows)
 
     group_rows = [f for f in weak_group_flags(strength, scope) if f["stock_id"] in set(ids)]
@@ -280,6 +311,10 @@ def run_filters(settings: Settings, repo: Repository, exchange, finmind, as_of: 
         "light_label": light.label,
         "light_total": light.total,
         "light_inputs": light.inputs,
+        "rebound": rebound.state if rebound else None,
+        "rebound_points": rebound.points if rebound else None,
+        "rebound_evidence": evidence_text(rebound.to_json()) if rebound else [],
+        "regime": regime["mode"],
         "groups_ranked": sum(1 for g in strength if g["rank"] is not None),
         "weak_groups": [g["name"] for g in strength if g["weak"]],
         "blocked_by_group": len(group_rows),

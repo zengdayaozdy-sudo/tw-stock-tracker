@@ -16,10 +16,12 @@ import pandas as pd
 from engine.config import Settings
 from engine.filters.groups import group_strength, weak_group_flags
 from engine.filters.market_light import compute_light
+from engine.filters.rebound import breadth_frame, compute_rebound
 from engine.scoring.indicators import Indicator, StockFrames, chips, fundamental, technical
 from engine.scoring.model import score_universe
 from engine.signals.entry import entry_triggers
 from engine.signals.levels import Levels, compute_levels
+from engine.signals.regime import market_regime
 from engine.signals.selection import select
 
 HORIZONS = ("short", "long")
@@ -32,12 +34,16 @@ class Candidate:
     score: float              # 入選週期中的最高總分（排序用）
     triggers: dict[str, dict]
     levels: Levels
+    size_factor: float = 1.0  # 反彈單縮小部位
+    regime: str = "normal"
 
 
 @dataclass
 class DayPlan:
     date: date
     light: str
+    rebound: str | None = None
+    regime: str = "normal"
     candidates: list[Candidate] = field(default_factory=list)
     blocked: dict[str, list[str]] = field(default_factory=dict)
     scores: dict[str, dict[str, Any]] = field(default_factory=dict)   # {stock_id: {horizon: {date, total}}}
@@ -69,6 +75,16 @@ class Planner:
         self.closes = {sid: f.prices["close"].astype(float).dropna() for sid, f in frames.items()}
         taiex = series.get("taiex") or []
         self.taiex = pd.Series({pd.Timestamp(d): v for d, v in taiex}, dtype=float).sort_index()
+        # 反彈偵測：寬度指標只依過去資料滾動計算，整段歷史算一次
+        rcfg = settings.filters.get("rebound") or {}
+        self.rebound_cfg = rcfg if rcfg.get("enabled") else None
+        if self.rebound_cfg:
+            panel = pd.DataFrame(self.closes)
+            self.breadth = breadth_frame(panel, rcfg["breadth_recovery"]["ma_days"])
+            vols = pd.DataFrame({sid: f.prices["volume"].astype(float) for sid, f in frames.items()})
+            self.volume = vols.sum(axis=1, min_count=1).dropna().sort_index()
+            oi = series.get("foreign_tx_oi") or []
+            self.foreign_oi = pd.Series({pd.Timestamp(d): v for d, v in oi}, dtype=float).sort_index()
 
     def _frames_on(self, d: date) -> dict[str, StockFrames]:
         """市值依當天收盤 × 股數（股數為目前資料，屬近似）。"""
@@ -83,7 +99,10 @@ class Planner:
     def day(self, d: date) -> DayPlan:
         s = self.settings
         light = compute_light(self.series, d, s.filters["market_light"])
-        plan = DayPlan(d, light.light)
+        rebound = (compute_rebound(self.taiex, self.breadth, self.volume, self.foreign_oi, d, self.rebound_cfg)
+                   if self.rebound_cfg else None)
+        regime = market_regime(light.light, rebound.state if rebound else None, s.risk)
+        plan = DayPlan(d, light.light, rebound.state if rebound else None, regime["mode"])
 
         frames = self._frames_on(d)
         results = score_universe(s, frames, self.groups, d, indicator_fn=self.indicators)
@@ -111,23 +130,24 @@ class Planner:
         selected = {h: select(totals[h], self.groups, s.enabled("top_percent_list"), s.scoring) for h in HORIZONS}
         for sid in sorted(set(selected["short"]) | set(selected["long"])):
             f = self.frames[sid]
-            triggers = entry_triggers(f.prices, f.chips, d, s.risk)
+            triggers = entry_triggers(f.prices, f.chips, d, s.risk, f.benchmark, regime["entry_conditions"])
             if not triggers:
                 continue
             reasons = []
             if sid in illiquid:
                 reasons.append("流動性不足")
-            if light.light == "bearish":
+            if regime["mode"] == "blocked":
                 reasons.append("大盤燈號偏空")
             if sid in weak:
                 reasons.append(weak[sid])
             if reasons:
                 plan.blocked[sid] = reasons
                 continue
-            levels = compute_levels(f.prices, f.valuations, d, s.risk, bearish=False)
+            levels = compute_levels(f.prices, f.valuations, d, s.risk, bearish=regime["mode"] != "normal")
             if levels is None:
                 continue
             horizons = [h for h in HORIZONS if sid in selected[h]]
-            plan.candidates.append(Candidate(sid, horizons, max(totals[h][sid] for h in horizons), triggers, levels))
+            plan.candidates.append(Candidate(sid, horizons, max(totals[h][sid] for h in horizons), triggers, levels,
+                                             regime["size_factor"], regime["mode"]))
         plan.candidates.sort(key=lambda c: (-c.score, c.stock_id))
         return plan
