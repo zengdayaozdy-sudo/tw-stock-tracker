@@ -536,6 +536,18 @@ def cmd_alert(args) -> None:
     print("系統警告：" + ("；".join(result["alerts"]) or "無"))
 
 
+def cmd_line_test(args) -> None:
+    """送一則測試訊息，確認 LINE 金鑰與推播對象設定正確。"""
+    from engine.notify.line import LineClient
+
+    settings = load_settings()
+    line = LineClient.from_env(settings.notify["line"])
+    if not line.configured:
+        raise SystemExit("LINE 尚未設定：缺少 LINE_CHANNEL_ACCESS_TOKEN 或 LINE_OWNER_USER_ID")
+    sent = line.push_texts([args.message or "台股追蹤：LINE 推播設定完成，之後每日報告與系統警告會送到這裡"])
+    print(f"已送出 {sent} 則")
+
+
 def cmd_holdings(args) -> None:
     from engine.db import connect
     from engine.joblog import job_run
@@ -785,6 +797,10 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("probe", help="確認證交所／櫃買資料欄位")
     p.add_argument("--date")
     p.set_defaults(func=cmd_probe)
+
+    p = sub.add_parser("line-test", help="送一則 LINE 測試訊息")
+    p.add_argument("--message")
+    p.set_defaults(func=cmd_line_test)
 
     p = sub.add_parser("probe-url", help="實測任意公開資料網址")
     p.add_argument("urls", nargs="+")

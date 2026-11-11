@@ -8,6 +8,7 @@ on:
         type: choice
         options:
           - probe
+          - line-test
           - probe-mops
           - probe-url
           - news
@@ -41,6 +42,8 @@ jobs:
       PLAN: ${{ vars.PLAN || 'free' }}
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       FINMIND_TOKEN: ${{ secrets.FINMIND_TOKEN }}
+      LINE_CHANNEL_ACCESS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}
+      LINE_OWNER_USER_ID: ${{ secrets.LINE_OWNER_USER_ID }}
       TZ: Asia/Taipei
     steps:
       - uses: actions/checkout@v4
@@ -58,6 +61,7 @@ jobs:
           case "$CMD" in
             probe|companies|seed-groups|plan) python -m engine.cli "$CMD" ;;
             probe-mops)       python -m engine.cli probe-mops $ARGS ;;
+            line-test)        python -m engine.cli line-test ;;
             probe-url)        eval python -m engine.cli probe-url $ARGS ;;
             news)             python -m engine.cli news $ARGS ;;
             fetch)            python -m engine.cli fetch $ARGS ;;
