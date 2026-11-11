@@ -7,11 +7,12 @@ import { NextResponse, type NextRequest } from "next/server";
 const REPO = process.env.GITHUB_REPO ?? "zengdayaozdy-sudo/tw-stock-tracker";
 
 export async function GET(req: NextRequest) {
-  const secret = process.env.CRON_SECRET;
+  const secret = process.env.CRON_SECRET?.trim();
   if (!secret || req.headers.get("authorization") !== `Bearer ${secret}`) {
     return NextResponse.json({ error: "未授權" }, { status: 401 });
   }
-  const token = process.env.GITHUB_DISPATCH_TOKEN;
+  // 貼上時常多帶前後空白或換行，去掉再用
+  const token = process.env.GITHUB_DISPATCH_TOKEN?.trim();
   if (!token) {
     return NextResponse.json({ error: "尚未設定 GITHUB_DISPATCH_TOKEN" }, { status: 500 });
   }
