@@ -288,7 +288,8 @@ def run_filters(settings: Settings, repo: Repository, exchange, finmind, as_of: 
     regime = market_regime(light.light, rebound.state if rebound else None, settings.risk)
     market_rows = []
     if regime["mode"] == "blocked":
-        market_rows = [{"stock_id": sid, "kind": "block", "reason": "大盤燈號偏空",
+        reason = f"大盤燈號偏空，{rebound.label}中待確認（列入反彈觀察）" if regime.get("watch") else "大盤燈號偏空"
+        market_rows = [{"stock_id": sid, "kind": "block", "reason": reason,
                         "detail": {"total": light.total}} for sid in ids]
     elif regime["mode"] != "normal":
         reason = f"大盤偏空，{rebound.label}：以{regime['label']}處理（部位 ×{regime['size_factor']:g}、停損收緊）"

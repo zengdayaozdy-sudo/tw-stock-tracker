@@ -70,13 +70,13 @@ rebound_mode:
     allow: true
     size_factor: 0.5           # 單筆風險與單檔上限 × 0.5
   attempt:                     # 反彈嘗試（自低點反彈但證據不足）
-    allow: true
-    size_factor: 0.25          # 試單
+    allow: false               # 回測：試單拉低年化（54.3% → 50.5%），預設只列入「反彈觀察」不發訊號
+    size_factor: 0.25          # 開啟時的試單部位
   # 反彈期間（不論燈號）額外檢查的領先型進場條件
+  # 站回月線（reclaim_ma20）回測勝率 14%、期望值 −3.5%，預設不加入
   entry_conditions:
     - oversold_reversal
     - rs_new_high
-    - reclaim_ma20
 
 costs:
   commission_rate: 0.001425    # 手續費

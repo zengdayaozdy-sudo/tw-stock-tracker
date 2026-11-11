@@ -202,21 +202,29 @@ def test_foreign_oi_heavy_short_but_covering_is_neutral():
     ("neutral", "attempt", "normal", 1.0),
     ("bearish", None, "blocked", 0.0),
     ("bearish", "none", "blocked", 0.0),
-    ("bearish", "attempt", "rebound_attempt", 0.25),
+    ("bearish", "attempt", "blocked", 0.0),     # 試單預設關閉：只列入反彈觀察
     ("bearish", "confirmed", "rebound_confirmed", 0.5),
 ])
 def test_market_regime(light, state, mode, factor):
     r = market_regime(light, state, RISK)
     assert r["mode"] == mode and r["size_factor"] == factor
-    leading = {"oversold_reversal", "rs_new_high", "reclaim_ma20"}
+    leading = {"oversold_reversal", "rs_new_high"}
     assert leading.issubset(r["entry_conditions"]) == (state in ("attempt", "confirmed"))
+    assert "reclaim_ma20" not in r["entry_conditions"]
+
+
+def test_regime_attempt_allowed_and_watch():
+    risk = copy.deepcopy(RISK)
+    assert market_regime("bearish", "attempt", risk)["watch"] is True
+    risk["rebound_mode"]["attempt"]["allow"] = True
+    r = market_regime("bearish", "attempt", risk)
+    assert r["mode"] == "rebound_attempt" and r["size_factor"] == 0.25
 
 
 def test_regime_attempt_can_be_disabled():
     risk = copy.deepcopy(RISK)
-    risk["rebound_mode"]["attempt"]["allow"] = False
-    assert market_regime("bearish", "attempt", risk)["mode"] == "blocked"
     risk["rebound_mode"]["enabled"] = False
+    assert market_regime("bearish", "attempt", risk)["watch"] is False
     assert market_regime("bearish", "confirmed", risk)["mode"] == "blocked"
 
 

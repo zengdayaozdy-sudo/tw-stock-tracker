@@ -39,6 +39,7 @@ python -m engine.cli alert        # 只檢查並推播系統警告（排程任�
 - [x] 9. 個人網站（Next.js，密碼保護）
 - [x] 10. 回測（backtrader，調參／保留驗證區間）
 - [x] 11. 排程與維運文件（[docs/runbook.md](docs/runbook.md)）
+- [x] 12. 大盤反彈偵測與反彈單（2026-11-11，[docs/rebound-research.md](docs/rebound-research.md)）
 
 ## 已完成的前置設定
 

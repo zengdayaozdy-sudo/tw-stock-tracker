@@ -5,7 +5,8 @@
 | 偏多／中性 | 無 | normal | 一般進場條件、正常部位 |
 | 偏多／中性 | 嘗試／確認 | normal | 加入領先型進場條件（跌深反轉、RS 先創高、站回月線），正常部位 |
 | 偏空 | 反彈確認 | rebound_confirmed | 加入領先型進場條件，部位 × confirmed.size_factor，停損收緊 |
-| 偏空 | 反彈嘗試 | rebound_attempt | 同上，部位 × attempt.size_factor（試單） |
+| 偏空 | 反彈嘗試 | rebound_attempt | 同上，部位 × attempt.size_factor（試單；預設關閉） |
+| 偏空 | 反彈嘗試（試單關閉） | blocked＋watch | 不發訊號，觸發進場條件者列入「反彈觀察」 |
 | 偏空 | 無 | blocked | 不發新買進訊號 |
 
 設定在 config/risk.yaml 的 rebound_mode。
@@ -39,8 +40,9 @@ def market_regime(light: str | None, rebound_state: str | None, risk: dict[str, 
             mode = f"rebound_{tier}"
             return {"mode": mode, "label": MODE_LABELS[mode], "size_factor": float(tcfg.get("size_factor", 0.5)),
                     "entry_conditions": entry, "tighten_stop": True}
-    return {"mode": "blocked", "label": MODE_LABELS["blocked"], "size_factor": 0.0, "entry_conditions": base,
-            "tighten_stop": True}
+    # 反彈尚未確認：不發訊號，但照樣檢查領先型條件，觸發者列入反彈觀察（濾網擋下名單）
+    return {"mode": "blocked", "label": MODE_LABELS["blocked"], "size_factor": 0.0, "entry_conditions": entry,
+            "tighten_stop": True, "watch": active}
 
 
 def scaled_position_cfg(position_cfg: dict[str, Any], factor: float) -> dict[str, Any]:
