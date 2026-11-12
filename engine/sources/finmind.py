@@ -13,7 +13,6 @@ from engine.config import Settings
 from engine.sources.common import HttpClient, SourceError, to_int, to_number
 from engine.sources.quota import QuotaTracker
 
-
 log = logging.getLogger(__name__)
 
 
