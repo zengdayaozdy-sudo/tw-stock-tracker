@@ -52,7 +52,7 @@ export default async function GroupPage({ params }: { params: Promise<{ name: st
           </div>
         </section>
       )}
-      <Panel title="成分股排行" meta="依短線分數">
+      <Panel icon="bars" title="成分股排行" meta="依短線分數">
         <div className="table-wrap">
           <table>
             <thead>

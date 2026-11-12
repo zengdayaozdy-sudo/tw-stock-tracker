@@ -3,6 +3,7 @@
 // 也可一次貼上多個代號（以空白或逗號分隔）後按 Enter。
 import { useEffect, useId, useRef, useState, useTransition } from "react";
 import type { ActionState } from "@/app/actions";
+import { Icon } from "./Icon";
 
 type Hit = { stock_id: string; name: string; industry: string | null; market: string; in_watchlist: boolean };
 
@@ -106,9 +107,7 @@ export function StockSearch({
     <div className={`search ${compact ? "compact" : ""}`} ref={box}>
       <div className="search-row">
         <div className="search-field">
-          <svg className="search-icon" viewBox="0 0 20 20" aria-hidden="true">
-            <path d="M8.5 3a5.5 5.5 0 1 0 3.4 9.8l3.7 3.7 1.1-1.1-3.7-3.7A5.5 5.5 0 0 0 8.5 3Zm0 1.6a3.9 3.9 0 1 1 0 7.8 3.9 3.9 0 0 1 0-7.8Z" />
-          </svg>
+          <Icon name="search" className="search-icon" />
           <input
             value={q}
             onChange={(e) => {

@@ -1,3 +1,4 @@
+import { BrandMark } from "@/components/Icon";
 import { authConfigured } from "@/lib/auth";
 
 const ERRORS: Record<string, string> = {
@@ -12,8 +13,8 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
     <main className="login">
       <div className="login-card">
         <div className="login-brand">
-          <span className="brand-mark" aria-hidden="true" />
-          台股追蹤
+          <BrandMark size={40} />
+          <span>台股追蹤</span>
         </div>
         <h1>登入</h1>
         <p className="sub">自選股評分、訊號與持股追蹤</p>

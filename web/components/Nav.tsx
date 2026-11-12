@@ -2,40 +2,18 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { BrandMark, Icon, type IconName } from "./Icon";
 
 const useIsoLayoutEffect = typeof window === "undefined" ? useEffect : useLayoutEffect;
 
-// 圖示：20×20，線條風格
-const ICONS: Record<string, React.ReactNode> = {
-  home: <path d="M3 9.5 10 4l7 5.5V16a1 1 0 0 1-1 1h-3.5v-4.5h-5V17H4a1 1 0 0 1-1-1Z" />,
-  layers: <path d="m10 3 7 3.5-7 3.5-7-3.5Zm-7 7 7 3.5 7-3.5M3 13.5 10 17l7-3.5" />,
-  star: <path d="m10 3 2.1 4.3 4.7.7-3.4 3.3.8 4.7L10 13.8 5.8 16l.8-4.7L3.2 8l4.7-.7Z" />,
-  wallet: <path d="M3 6.5A1.5 1.5 0 0 1 4.5 5h11A1.5 1.5 0 0 1 17 6.5v8a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 3 14.5Zm10 4.5h4" />,
-  gear: (
-    <>
-      <circle cx="10" cy="10" r="2.5" />
-      <path d="M10 2.5v2m0 11v2M2.5 10h2m11 0h2M4.7 4.7l1.4 1.4m7.8 7.8 1.4 1.4m0-10.6-1.4 1.4m-7.8 7.8-1.4 1.4" />
-    </>
-  ),
-  pulse: <path d="M2.5 10h3l2-5 3 10 2-5h5" />,
-};
-
 const LINKS = [
-  { href: "/", label: "總覽", icon: "home" },
-  { href: "/watchlist", label: "自選股", icon: "star" },
-  { href: "/groups", label: "族群", icon: "layers" },
-  { href: "/portfolio", label: "持股與交易", short: "持股", icon: "wallet" },
-  { href: "/settings", label: "設定", icon: "gear" },
-  { href: "/status", label: "系統狀態", icon: "pulse", desktopOnly: true },
-] as const;
-
-function Icon({ name }: { name: string }) {
-  return (
-    <svg viewBox="0 0 20 20" aria-hidden="true" className="nav-icon">
-      {ICONS[name]}
-    </svg>
-  );
-}
+  { href: "/", label: "總覽", icon: "overview" },
+  { href: "/watchlist", label: "自選股", icon: "watch" },
+  { href: "/groups", label: "族群", icon: "groups" },
+  { href: "/portfolio", label: "持股與交易", short: "持股", icon: "portfolio" },
+  { href: "/settings", label: "設定", icon: "settings" },
+  { href: "/status", label: "系統狀態", icon: "status", desktopOnly: true },
+] as const satisfies readonly { href: string; label: string; icon: IconName; short?: string; desktopOnly?: boolean }[];
 
 export function Nav() {
   const path = usePathname();
@@ -62,22 +40,26 @@ export function Nav() {
       <header className="topbar">
         <div className="topbar-inner">
           <Link href="/" className="brand">
-            <span className="brand-mark" aria-hidden="true" />
-            台股追蹤
+            <BrandMark size={26} />
+            <span className="brand-name">台股追蹤</span>
           </Link>
           <nav ref={navRef} className={`nav ${ind ? "has-ind" : ""}`} aria-label="主要頁面">
             {ind && <span className="nav-ind" style={{ transform: `translateX(${ind.x}px)`, width: ind.w }} />}
             {LINKS.map((l) => (
               <Link key={l.href} href={l.href} className={isActive(l.href) ? "active" : ""}>
+                <Icon name={l.icon} />
                 {l.label}
               </Link>
             ))}
           </nav>
           <Link href="/status" className={`topbar-status ${isActive("/status") ? "active" : ""}`} aria-label="系統狀態">
-            <Icon name="pulse" />
+            <Icon name="status" />
           </Link>
           <form method="post" action="/api/logout">
-            <button className="logout" type="submit">登出</button>
+            <button className="logout" type="submit" aria-label="登出" title="登出">
+              <Icon name="logout" />
+              <span>登出</span>
+            </button>
           </form>
         </div>
       </header>
@@ -85,7 +67,9 @@ export function Nav() {
         {tabIndex >= 0 && <span className="tab-ind" style={{ transform: `translateX(${tabIndex * 100}%)` }} />}
         {tabs.map((l) => (
           <Link key={l.href} href={l.href} className={isActive(l.href) ? "active" : ""}>
-            <Icon name={l.icon} />
+            <span className="tab-icon">
+              <Icon name={l.icon} />
+            </span>
             <span>{"short" in l ? l.short : l.label}</span>
           </Link>
         ))}

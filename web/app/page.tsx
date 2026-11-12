@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { CountUp } from "@/components/CountUp";
 import { DivBar } from "@/components/DivBar";
+import { Icon } from "@/components/Icon";
 import { Updated } from "@/components/Updated";
 import { BuySignalTable, Change, Panel, StockLink } from "@/components/ui";
 import { LIGHT_LABELS, dateLabel, money, num, reboundEvidence, timeTaipei, tone } from "@/lib/format";
@@ -125,9 +126,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
           </p>
         </div>
         <form action={goToStock} className="quick-search">
-          <svg viewBox="0 0 20 20" className="search-icon" aria-hidden="true">
-            <path d="M8.5 3a5.5 5.5 0 0 1 4.38 8.83l3.65 3.64-1.06 1.06-3.64-3.65A5.5 5.5 0 1 1 8.5 3Zm0 1.5a4 4 0 1 0 0 8 4 4 0 0 0 0-8Z" />
-          </svg>
+          <Icon name="search" className="search-icon" />
           <input name="q" placeholder="代號或名稱" aria-label="查詢股票" />
         </form>
       </header>
@@ -170,7 +169,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
       </section>
 
       <div className="grid wide-left">
-        <Panel title="大盤燈號依據" meta={<Updated at={upd.filters} />}>
+        <Panel icon="gauge" title="大盤燈號依據" meta={<Updated at={upd.filters} />}>
           {m ? (
             <ul className="votes">
               {m.inputs.map((i) => (
@@ -215,7 +214,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
             ))}
         </Panel>
 
-        <Panel title="系統狀態" meta={<Link href="/status">排程紀錄</Link>}>
+        <Panel icon="server" title="系統狀態" meta={<Link href="/status">排程紀錄</Link>}>
           <dl className="kv panel-body">
             <dt>資料抓取</dt>
             <dd>
@@ -263,7 +262,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
       </div>
 
       <div className="gap" />
-      <Panel title="今日買進訊號" meta={<>{buys.length} 筆<span className="sep">｜</span><Updated at={upd.signals} /></>}>
+      <Panel icon="target" title="今日買進訊號" meta={<>{buys.length} 筆<span className="sep">｜</span><Updated at={upd.signals} /></>}>
         {buys.length === 0 && m?.light === "bearish" && !rebounding ? (
           <p className="empty">大盤燈號偏空，今日不發新買進訊號</p>
         ) : (
@@ -289,7 +288,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
       {setups.length > 0 && (
         <>
           <div className="gap" />
-          <Panel title="醞釀名單" meta={<>{setups.length} 檔<span className="sep">｜</span>跌深＋強勢跡象，收盤站上轉強價才成立</>}>
+          <Panel icon="sprout" title="醞釀名單" meta={<>{setups.length} 檔<span className="sep">｜</span>跌深＋強勢跡象，收盤站上轉強價才成立</>}>
             <WatchTable items={setups} kind="setup" />
           </Panel>
         </>
@@ -297,7 +296,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
 
       <div className="gap" />
       <div className="grid two">
-        <Panel title="族群強弱" meta={<><Updated at={upd.filters} /><span className="sep">｜</span><Link href="/groups">全部族群</Link></>}>
+        <Panel icon="groups" title="族群強弱" meta={<><Updated at={upd.filters} /><span className="sep">｜</span><Link href="/groups">全部族群</Link></>}>
           {ranked.length ? (
             <div className="table-wrap">
               <table>
@@ -341,7 +340,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
         </Panel>
 
         <Panel
-          title="持股"
+          icon="portfolio" title="持股"
           meta={
             holdings.length ? (
               <>

@@ -8,6 +8,7 @@ import { Updated } from "@/components/Updated";
 import { HORIZON_LABELS, money, num, pct, shortDate, timeTaipei, todayTaipei } from "@/lib/format";
 import { dataUpdates, flagsOn, latestDate, latestScores, priceHistory, stock, stockDataDates, stockEvents, stockGroups, stockNews, stockSignals } from "@/lib/queries";
 import { requireSession } from "@/lib/session";
+import { Icon } from "@/components/Icon";
 
 const STATUS_LABELS: Record<string, string> = { disposition: "處置股", attention: "注意股", full_delivery: "全額交割" };
 const MARKET_LABELS: Record<string, string> = { twse: "上市", tpex: "上櫃" };
@@ -120,12 +121,12 @@ export default async function StockPage({ params }: { params: Promise<{ id: stri
       </section>
 
       <Panel
-        title="K 線"
+        icon="chart" title="K 線"
         meta={
           <>
-            <a href={`https://statementdog.com/analysis/${s.stock_id}`} target="_blank" rel="noreferrer">財報狗</a>
-            {"　"}
-            <a href={`https://goodinfo.tw/tw/StockDetail.asp?STOCK_ID=${s.stock_id}`} target="_blank" rel="noreferrer">Goodinfo</a>
+            <a href={`https://statementdog.com/analysis/${s.stock_id}`} target="_blank" rel="noreferrer" className="ext">財報狗<Icon name="external" /></a>
+            <span className="sep">｜</span>
+            <a href={`https://goodinfo.tw/tw/StockDetail.asp?STOCK_ID=${s.stock_id}`} target="_blank" rel="noreferrer" className="ext">Goodinfo<Icon name="external" /></a>
           </>
         }
       >
@@ -135,7 +136,7 @@ export default async function StockPage({ params }: { params: Promise<{ id: stri
       {latestBuy && (
         <>
           <div style={{ height: 14 }} />
-          <Panel title="最近買進訊號參考價位" meta={`${latestBuy.date}｜${HORIZON_LABELS[latestBuy.horizon]}`}>
+          <Panel icon="target" title="最近買進訊號參考價位" meta={`${latestBuy.date}｜${HORIZON_LABELS[latestBuy.horizon]}`}>
             <dl className="kv panel-body">
               <dt>買進區間</dt>
               <dd>
@@ -176,7 +177,7 @@ export default async function StockPage({ params }: { params: Promise<{ id: stri
       {scores.map((sc) => (
         <div key={sc.horizon}>
           <div style={{ height: 14 }} />
-          <Panel title={`${HORIZON_LABELS[sc.horizon]}評分拆解`} meta={`${sc.date}｜總分 ${num(sc.total, 1)}`}>
+          <Panel icon="bars" title={`${HORIZON_LABELS[sc.horizon]}評分拆解`} meta={`${sc.date}｜總分 ${num(sc.total, 1)}`}>
             <ScoreBreakdown score={sc} />
           </Panel>
         </div>
@@ -184,7 +185,7 @@ export default async function StockPage({ params }: { params: Promise<{ id: stri
 
       <div style={{ height: 14 }} />
       <div className="grid two">
-        <Panel title="消息面排雷紀錄" meta={<>{news.length} 則<span className="sep">｜</span><Updated at={dates.news_checked ?? upd.news} label="判讀" /></>}>
+        <Panel icon="shield" title="消息面排雷紀錄" meta={<>{news.length} 則<span className="sep">｜</span><Updated at={dates.news_checked ?? upd.news} label="判讀" /></>}>
           {news.length ? (
             <div className="table-wrap">
               <table>
@@ -222,7 +223,7 @@ export default async function StockPage({ params }: { params: Promise<{ id: stri
           )}
         </Panel>
 
-        <Panel title="事件行事曆">
+        <Panel icon="calendar" title="事件行事曆">
           {eventWarnings.length > 0 && (
             <div className="panel-body tags" style={{ borderBottom: "1px solid var(--line)" }}>
               {eventWarnings.map((f) => (

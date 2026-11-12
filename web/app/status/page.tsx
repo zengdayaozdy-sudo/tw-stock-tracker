@@ -49,7 +49,7 @@ export default async function StatusPage() {
       <p className="sub">最近 14 天排程紀錄、資料完整性、FinMind 額度用量</p>
 
       <div className="grid two">
-        <Panel title="最近一次資料完整性" meta={fetchToday?.run_date ?? today}>
+        <Panel icon="checkCircle" title="最近一次資料完整性" meta={fetchToday?.run_date ?? today}>
           <div className="panel-body">
             {!fetchToday ? (
               <span className="tag warn">尚未抓取</span>
@@ -69,7 +69,7 @@ export default async function StatusPage() {
           </div>
         </Panel>
 
-        <Panel title="盤中停損監控">
+        <Panel icon="radar" title="盤中停損監控">
           <div className="panel-body">
             {heartbeat ? <>最後心跳 <span className="num">{timeTaipei(heartbeat)}</span></> : "尚未啟動（在 Mac 上執行 deploy/launchd/install.sh）"}
           </div>
@@ -77,7 +77,7 @@ export default async function StatusPage() {
       </div>
 
       <div style={{ height: 14 }} />
-      <Panel title="FinMind 額度" meta={`每小時上限 ${budget} 次（已保留安全餘裕）`}>
+      <Panel icon="database" title="FinMind 額度" meta={`每小時上限 ${budget} 次（已保留安全餘裕）`}>
         {usage.length ? (
           <table>
             <tbody>
@@ -100,7 +100,7 @@ export default async function StatusPage() {
       </Panel>
 
       <div style={{ height: 14 }} />
-      <Panel title="排程紀錄" meta={`${jobs.length} 筆`}>
+      <Panel icon="list" title="排程紀錄" meta={`${jobs.length} 筆`}>
         <div className="table-wrap">
           <table>
             <thead>

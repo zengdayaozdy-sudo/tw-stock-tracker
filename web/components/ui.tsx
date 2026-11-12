@@ -1,12 +1,32 @@
 import Link from "next/link";
+import { Icon, type IconName } from "./Icon";
 import { HORIZON_LABELS, num, pct, tone } from "@/lib/format";
 import type { ScoreRow, Signal } from "@/lib/queries";
 
-export function Panel({ title, meta, children }: { title: string; meta?: React.ReactNode; children: React.ReactNode }) {
+export function Panel({
+  title,
+  meta,
+  icon,
+  tone,
+  children,
+}: {
+  title: string;
+  meta?: React.ReactNode;
+  icon?: IconName;
+  tone?: "up" | "down" | "warn";
+  children: React.ReactNode;
+}) {
   return (
-    <section className="panel">
+    <section className={`panel${tone ? ` panel-${tone}` : ""}`}>
       <div className="panel-head">
-        <h2>{title}</h2>
+        <h2>
+          {icon && (
+            <span className="panel-icon">
+              <Icon name={icon} />
+            </span>
+          )}
+          {title}
+        </h2>
         {meta && <span className="meta">{meta}</span>}
       </div>
       {children}

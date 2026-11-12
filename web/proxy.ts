@@ -21,6 +21,6 @@ export async function proxy(req: NextRequest) {
 }
 
 export const config = {
-  // 靜態資源不檢查，其餘（含所有 API）都要登入
-  matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
+  // 靜態資源與網站圖示不檢查，其餘（含所有 API）都要登入
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|icon.svg|apple-icon.png|icon-192.png|icon-512.png|manifest.webmanifest).*)"],
 };

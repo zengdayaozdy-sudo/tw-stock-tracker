@@ -23,7 +23,7 @@ export default async function SettingsPage() {
       <p className="sub">總資金依目前持股成本自動計算，影響建議張數；方案模式由環境變數 PLAN 決定</p>
 
       <div className="grid two">
-        <Panel title="總資金" meta="依持股自動計算">
+        <Panel icon="coins" title="總資金" meta="依持股自動計算">
           <div className="panel-body">
             <p className="num" style={{ fontSize: 22, margin: "0 0 6px" }}>{money(Number(capital))} 元</p>
             <p className="small muted">
@@ -33,7 +33,7 @@ export default async function SettingsPage() {
           </div>
         </Panel>
 
-        <Panel title="LINE 通知" meta={modified("notify")}>
+        <Panel icon="bell" title="LINE 通知" meta={modified("notify")}>
           <div className="panel-body">
             <ActionForm action={saveNotify} submit="儲存" className="">
               {(
@@ -55,6 +55,7 @@ export default async function SettingsPage() {
 
       <div style={{ height: 14 }} />
       <Panel
+        icon="layersLock"
         title={`方案：${config.plan_label}`}
         meta={synced ? `設定同步於 ${timeTaipei(config.updated_at)}` : "尚未同步（每日排程執行後更新）"}
       >

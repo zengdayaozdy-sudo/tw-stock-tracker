@@ -52,7 +52,7 @@ export default async function PortfolioPage() {
         現價為 {shortDate(date)} 收盤
       </p>
 
-      <Panel title="登錄交易" meta="手續費、證交稅留空會自動計算；會自動記錄當時的分數與訊號">
+      <Panel icon="pen" title="登錄交易" meta="手續費、證交稅留空會自動計算；會自動記錄當時的分數與訊號">
         <div className="panel-body">
           <ActionForm action={recordTrade} submit="登錄">
             <label className="field">
@@ -102,7 +102,7 @@ export default async function PortfolioPage() {
       </Panel>
 
       <div style={{ height: 14 }} />
-      <Panel title="目前持股" meta={<>{holdings.length} 檔<span className="sep">｜</span><Updated at={upd.holdings} label="檢查" /></>}>
+      <Panel icon="portfolio" title="目前持股" meta={<>{holdings.length} 檔<span className="sep">｜</span><Updated at={upd.holdings} label="檢查" /></>}>
         {holdings.length ? (
           <div className="table-wrap">
             <table>
@@ -156,7 +156,7 @@ export default async function PortfolioPage() {
       </Panel>
 
       <div style={{ height: 14 }} />
-      <Panel title="績效統計" meta={st.start ? `${st.start} 起` : undefined}>
+      <Panel icon="pie" title="績效統計" meta={st.start ? `${st.start} 起` : undefined}>
         <div className="stats">
           <div className="stat"><div className="stat-label">已實現交易（{st.wins} 勝 {st.losses} 敗）</div><div className="stat-value">{st.closed} 筆</div></div>
           <div className="stat"><div className="stat-label">勝率</div><div className="stat-value">{pct(st.winRate, 1, false)}</div></div>
@@ -175,7 +175,7 @@ export default async function PortfolioPage() {
       </Panel>
 
       <div style={{ height: 14 }} />
-      <Panel title="交易紀錄" meta={`${rows.length} 筆`}>
+      <Panel icon="list" title="交易紀錄" meta={`${rows.length} 筆`}>
         {rows.length ? (
           <div className="table-wrap">
             <table>

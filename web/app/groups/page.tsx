@@ -19,7 +19,7 @@ export default async function GroupsPage() {
       <p className="sub">
         {date ? dateLabel(date) : "尚無資料"}｜綜合近 1／3 個月相對大盤報酬與族群平均分數排名，後段為弱勢族群（不發買進訊號）
       </p>
-      <Panel title="排名" meta={<>{strength.filter((g) => g.rank).length} 個族群<span className="sep">｜</span><Updated at={upd.filters} /></>}>
+      <Panel icon="groups" title="排名" meta={<>{strength.filter((g) => g.rank).length} 個族群<span className="sep">｜</span><Updated at={upd.filters} /></>}>
         {strength.length ? (
           <div className="table-wrap">
             <table>
@@ -65,7 +65,7 @@ export default async function GroupsPage() {
       {others.length > 0 && (
         <>
           <div style={{ height: 14 }} />
-          <Panel title="未排名的族群" meta="成分股不在追蹤範圍內">
+          <Panel icon="groups" title="未排名的族群" meta="成分股不在追蹤範圍內">
             <p className="panel-body small">
               {others.map((g) => (
                 <Link key={g.group_id} href={`/groups/${encodeURIComponent(g.name)}`} style={{ marginRight: 12 }}>

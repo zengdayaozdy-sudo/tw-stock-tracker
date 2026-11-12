@@ -2,6 +2,7 @@ import Link from "next/link";
 import { addGroupMembers, addWatchlist, createGroup, deleteGroup, removeGroupMember, removeWatchlist, renameGroup } from "@/app/actions";
 import { ActionForm } from "@/components/ActionForm";
 import { StockSearch } from "@/components/StockSearch";
+import { Icon } from "@/components/Icon";
 import { Updated } from "@/components/Updated";
 import { num, pct, shortDate, tone } from "@/lib/format";
 import { type WatchItem, dataUpdates, groupsWithMembers, latestDate, names, runtimeConfig, watchlistDetail } from "@/lib/queries";
@@ -79,7 +80,7 @@ export default async function WatchlistPage({ searchParams }: { searchParams: Pr
 
       <section className="card">
         <div className="card-head">
-          <h2>加入自選股</h2>
+          <h2><span className="panel-icon"><Icon name="plus" /></span>加入自選股</h2>
         </div>
         <div className="card-body">
           <StockSearch action={addWatchlist} />
@@ -94,7 +95,7 @@ export default async function WatchlistPage({ searchParams }: { searchParams: Pr
 
       <section className="card">
         <div className="card-head">
-          <h2>我的自選股</h2>
+          <h2><span className="panel-icon"><Icon name="watch" /></span>我的自選股</h2>
           <span className="meta">
             {shown.length === list.length ? `${list.length} 檔` : `${shown.length} / ${list.length} 檔`}
           </span>
@@ -189,9 +190,9 @@ export default async function WatchlistPage({ searchParams }: { searchParams: Pr
       </section>
 
       <section className="section-head">
-        <h2>自訂族群</h2>
+        <h2><span className="panel-icon"><Icon name="groups" /></span>自訂族群</h2>
         <details className="reveal">
-          <summary className="btn ghost">＋ 新增族群</summary>
+          <summary className="btn ghost"><Icon name="plus" />新增族群</summary>
           <div className="reveal-pop">
             <ActionForm action={createGroup} submit="建立">
               <input name="name" placeholder="族群名稱，例如 AI 伺服器" required maxLength={30} aria-label="族群名稱" />
@@ -251,7 +252,7 @@ export default async function WatchlistPage({ searchParams }: { searchParams: Pr
                     <p className="faint small">還沒有成分股</p>
                   )}
                   <details className="reveal inline-reveal">
-                    <summary>＋ 加入成分股</summary>
+                    <summary><Icon name="plus" />加入成分股</summary>
                     <StockSearch
                       action={addGroupMembers}
                       hidden={{ group_id: String(g.group_id) }}
@@ -271,7 +272,7 @@ export default async function WatchlistPage({ searchParams }: { searchParams: Pr
       <p className="faint small legend">虛線外框的成分股不在自選股內，不會出現在每日報告</p>
 
       <section className="section-head">
-        <h2>產業族群</h2>
+        <h2><span className="panel-icon"><Icon name="layers" /></span>產業族群</h2>
         <span className="meta">證交所產業分類，自動帶入</span>
       </section>
       <div className="chips wrap">

@@ -40,8 +40,8 @@ export function PriceChart({ bars, markers, levels }: { bars: Bar[]; markers: Ma
     const down = css("--down", "#0b7a3e");
     const chart = createChart(ref.current, {
       autoSize: true,
-      layout: { background: { type: ColorType.Solid, color: "transparent" }, textColor: css("--muted", "#6b6e73"), fontSize: 11 },
-      grid: { vertLines: { color: css("--line", "#e4e2dc") }, horzLines: { color: css("--line", "#e4e2dc") } },
+      layout: { background: { type: ColorType.Solid, color: "transparent" }, textColor: css("--muted", "#6b6e73"), fontSize: 11, fontFamily: getComputedStyle(document.body).fontFamily },
+      grid: { vertLines: { visible: false }, horzLines: { color: css("--line", "#e4e2dc") } },
       rightPriceScale: { borderColor: css("--line-strong", "#cfccc4") },
       timeScale: { borderColor: css("--line-strong", "#cfccc4") },
       localization: { locale: "zh-TW" },
@@ -102,8 +102,9 @@ export function PriceChart({ bars, markers, levels }: { bars: Bar[]; markers: Ma
   return (
     <div>
       <div ref={ref} className="chart" />
-      <p className="small faint" style={{ margin: "6px 14px 10px" }}>
+      <p className="small faint" style={{ margin: "8px 18px 12px" }}>
         <span style={{ color: "#d48a00" }}>━ 5 日</span>　<span style={{ color: "#2f6fb0" }}>━ 20 日</span>
+        {"　"}
         <span style={{ color: "#8a4fbf" }}>━ 60 日</span>　▲ 買進訊號　▼ 賣出提醒　成交量單位：張
       </p>
     </div>
