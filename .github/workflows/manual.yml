@@ -40,7 +40,7 @@ on:
 jobs:
   run:
     runs-on: ubuntu-latest
-    timeout-minutes: 180
+    timeout-minutes: 350   # 調參與大量回補可能跑好幾個小時（GitHub 上限 360 分鐘）
     env:
       PLAN: ${{ vars.PLAN || 'free' }}
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
