@@ -3,6 +3,8 @@
 # `python -m engine.cli probe` 實測確認欄位後再改成 true。
 
 finmind:
+  quota_exceeded_wait_seconds: 600   # 收到 402（額度用完）時等多久再試；FinMind 額度為近 60 分鐘滾動計算
+  quota_exceeded_max_waits: 8
   base_url: https://api.finmindtrade.com/api/v4/data
   verified: true
   # 官方快速入門：有 token 每小時 600 次，無 token 300 次

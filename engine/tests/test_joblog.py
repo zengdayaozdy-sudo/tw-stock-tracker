@@ -97,3 +97,28 @@ def test_quota_wait_keeps_connection_alive():
     q.acquire()
     assert sum(slept) == 605 and max(slept) <= 240
     assert len(pings) == len(slept) + 1     # 先提交一次，之後每段睡完都碰一下連線
+
+
+def test_finmind_waits_on_402_then_retries():
+    from engine.config import load_settings
+    from engine.sources.common import SourceError
+    from engine.sources.finmind import FinMindClient
+    from engine.sources.quota import QuotaTracker
+
+    class FakeHttp:
+        def __init__(self):
+            self.calls = 0
+
+        def get_json(self, url, params=None):
+            self.calls += 1
+            if self.calls <= 2:
+                raise SourceError("請求失敗（Client error '402 Payment Required'）")
+            return {"status": 200, "data": [{"x": 1}]}
+
+    waits = []
+    quota = QuotaTracker("finmind", 600, 0.9, sleep=waits.append)
+    client = FinMindClient(load_settings("free"), FakeHttp(), quota)
+    from datetime import date
+
+    assert client.fetch("price", "2330", date(2026, 1, 1)) == [{"x": 1}]
+    assert waits == [600, 600]

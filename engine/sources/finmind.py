@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 from collections import defaultdict
 from dataclasses import dataclass
@@ -11,6 +12,9 @@ from typing import Any
 from engine.config import Settings
 from engine.sources.common import HttpClient, SourceError, to_int, to_number
 from engine.sources.quota import QuotaTracker
+
+
+log = logging.getLogger(__name__)
 
 
 @dataclass
@@ -42,8 +46,22 @@ class FinMindClient:
             params["end_date"] = end.isoformat()
         if self.token:
             params["token"] = self.token
-        self.quota.acquire()
-        payload = self.http.get_json(self.settings.sources["finmind"]["base_url"], params=params)
+        cfg = self.settings.sources["finmind"]
+        waits = 0
+        while True:
+            self.quota.acquire()
+            try:
+                payload = self.http.get_json(cfg["base_url"], params=params)
+                break
+            except SourceError as e:
+                # 402＝FinMind 額度用完。實測額度是「近 60 分鐘」滾動計算，不是整點歸零（2026-11-13 回補時遇到），
+                # 所以本機計數以為整點已重置時仍可能被拒；等一段時間再試，不中斷整批
+                if "402" not in str(e) or waits >= int(cfg.get("quota_exceeded_max_waits", 8)):
+                    raise
+                waits += 1
+                wait = float(cfg.get("quota_exceeded_wait_seconds", 600))
+                log.warning("FinMind 額度已用完（402），第 %d 次等待 %.0f 秒後重試", waits, wait)
+                self.quota._wait(wait)
         if not isinstance(payload, dict) or "data" not in payload:
             raise SourceError(f"FinMind 回傳格式不符：{str(payload)[:200]}")
         status = payload.get("status")
