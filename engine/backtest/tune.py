@@ -70,7 +70,7 @@ def _as_overrides(values: dict[str, Any]) -> dict[str, str]:
     return {k: json.dumps(v) for k, v in values.items()}
 
 
-def run_tune(settings: Settings, repo, cfg: dict[str, Any] | None = None) -> TuneResult:
+def run_tune(settings: Settings, repo, cfg: dict[str, Any] | None = None, progress=None) -> TuneResult:
     cfg = cfg or load_tune_config()
     obj = cfg["objective"]
     latest = repo.latest_series_date("taiex")
@@ -78,6 +78,7 @@ def run_tune(settings: Settings, repo, cfg: dict[str, Any] | None = None) -> Tun
     ctx = load_context(settings, repo, start, stop)
     repo.conn.rollback()  # 之後只在記憶體計算，不佔用資料庫交易
     cache: dict[str, Trial] = {}
+    steps: list[dict[str, Any]] = []
 
     def run(values: dict[str, Any], label: str = "", rescore: bool = False) -> Trial:
         sig = json.dumps(values, sort_keys=True)
@@ -91,12 +92,15 @@ def run_tune(settings: Settings, repo, cfg: dict[str, Any] | None = None) -> Tun
             cache[sig] = trial
         log.info("%s 年化 %s 回撤 %s 交易 %s（%.0f 秒）", label or sig, metrics.get("cagr"),
                  metrics.get("max_drawdown"), metrics.get("trades"), trial.seconds)
+        if progress is not None:  # 每組跑完就寫出目前結果，逾時中斷也不會全部白費
+            done = list(cache.values()) or [trial]
+            top = max(done, key=lambda t: t.key(obj))
+            progress(TuneResult(done[0], top, done, list(steps), [], (start, stop), len(ctx.frames)))
         return trial
 
     baseline = run({}, "基準（現行設定）")
     best_values: dict[str, Any] = {}
     best = baseline
-    steps: list[dict[str, Any]] = []
     params: dict[str, list] = cfg["params"]
     for rnd in range(1, int(cfg.get("rounds", 1)) + 1):
         improved = False

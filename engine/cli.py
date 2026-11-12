@@ -889,14 +889,18 @@ def cmd_tune(args) -> None:
         cfg["rounds"] = args.rounds
     if args.no_rescoring:
         cfg["rescoring"] = []
+    out = Path("reports")
+    out.mkdir(parents=True, exist_ok=True)
+
+    def progress(partial) -> None:
+        (out / "tune-progress.md").write_text(render_tune(partial, cfg), encoding="utf-8")
+
     try:
-        res = run_tune(settings, Repository(connect()), cfg)
+        res = run_tune(settings, Repository(connect()), cfg, progress=progress)
     except BacktestError as e:
         raise SystemExit(f"無法調參：{e}") from e
     report = render_tune(res, cfg)
     print(report)
-    out = Path("reports")
-    out.mkdir(parents=True, exist_ok=True)
     (out / "tune-report.md").write_text(report, encoding="utf-8")
     (out / "tune-best.yaml").write_text(best_overrides_yaml(res), encoding="utf-8")
     print("報告：reports/tune-report.md、最佳參數：reports/tune-best.yaml")
