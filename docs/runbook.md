@@ -71,6 +71,15 @@ Import 本 repo → Root Directory 設為 `web` → 環境變數：
 
 ### 2.4 盤中停損監控（Mac）
 
+一鍵安裝（會問 DATABASE_URL 與 LINE 金鑰，輸入時不顯示）：
+
+```bash
+git clone https://github.com/zengdayaozdy-sudo/tw-stock-tracker.git ~/tw-stock-tracker
+~/tw-stock-tracker/deploy/launchd/setup-mac.sh
+```
+
+手動安裝：
+
 ```bash
 .venv/bin/python -m engine.cli monitor --once   # 確認 .env 的 DATABASE_URL、LINE 設定正確
 ./deploy/launchd/install.sh                     # 安裝為登入後自動啟動、當掉自動重啟
