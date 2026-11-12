@@ -169,7 +169,8 @@ def render_tune(res: TuneResult, cfg: dict[str, Any]) -> str:
         detail = "；".join(f"{v}：{_pct(c)}／{_pct(d)}／{n}" for v, c, d, n in st["results"])
         lines.append(f"| {st['round']} | `{st['param']}` | {st['from']} → {st['to']} | {detail} |")
     if res.rescoring:
-        lines += ["", "## 評分權重比較（最佳風控參數下）", "", "| 組合 | 年化報酬 | 最大回撤 | 交易數 | 勝率 | 期望值 | 門檻 |",
+        lines += ["", "## 評分權重比較（最佳風控參數下）", "",
+                  "| 組合 | 年化報酬 | 最大回撤 | 交易數 | 勝率 | 期望值 | 門檻 |",
                   "|---|---:|---:|---:|---:|---:|---|"]
         lines += [row(t.label.replace("評分組合：", ""), t) for t in res.rescoring]
     lines += [

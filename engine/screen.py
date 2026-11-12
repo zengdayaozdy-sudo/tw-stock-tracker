@@ -267,7 +267,8 @@ def render_report(result: dict[str, Any]) -> str:
         "",
         "這是固定規則的量化初選，不是買進建議；入選後仍由每日評分、濾網與訊號判斷。股價未還原除權息，相對強弱為近似值。",
         "",
-        "| # | 代號 | 名稱 | 產業 | 總分 | 第一關 | 第二關 | 累計營收年增 | 單月年增 | 本益比 | 法人買超比 | 相對強弱 | 相對年線 |",
+        "| # | 代號 | 名稱 | 產業 | 總分 | 第一關 | 第二關 | 累計營收年增 | 單月年增 | 本益比 | 法人買超比 "
+        "| 相對強弱 | 相對年線 |",
         "|---|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
     ]
     for i, c in enumerate(result["picks"], start=1):
@@ -280,7 +281,8 @@ def render_report(result: dict[str, Any]) -> str:
     for c in result["picks"]:
         counts[c.industry] = counts.get(c.industry, 0) + 1
     lines += ["", "## 產業分布（新增＋現有）", "", "| 產業 | 新增 | 現有 |", "|---|---:|---:|"]
-    for ind in sorted(set(counts) | set(result["existing"]), key=lambda k: -(counts.get(k, 0) + result["existing"].get(k, 0))):
+    existing = result["existing"]
+    for ind in sorted(set(counts) | set(existing), key=lambda k: -(counts.get(k, 0) + existing.get(k, 0))):
         lines.append(f"| {ind} | {counts.get(ind, 0)} | {result['existing'].get(ind, 0)} |")
     if result["failed"]:
         lines += ["", "股價抓取失敗：" + "；".join(result["failed"][:10])]
