@@ -492,6 +492,24 @@ class ExchangeClient:
                     out.append({"stock_id": code, "date": d, "event_type": "股東會", "note": f"股東{kind}"})
         return out
 
+    def month_revenue(self) -> list[dict]:
+        """上市＋上櫃最新一期月營收彙總（全市場一次取得）：年增率、累計年增率。"""
+        out: list[dict] = []
+        for market in ("twse", "tpex"):
+            for r in _rows(self.raw(market, "month_revenue_all")):
+                code = str(pick(r, "公司代號") or "").strip()
+                if not _is_common_stock(code):
+                    continue
+                out.append({
+                    "stock_id": code,
+                    "period": str(pick(r, "資料年月") or ""),
+                    "industry": pick(r, "產業別"),
+                    "revenue": to_number(pick(r, "營業收入-當月營收")),
+                    "month_yoy": to_number(pick(r, "營業收入-去年同月增減(%)")),
+                    "cum_yoy": to_number(pick(r, "累計營業收入-前期比較增減(%)")),
+                })
+        return out
+
     def holidays(self) -> set[date]:
         """休市日（不含「開始交易日」「最後交易日」等仍有交易的日子）。"""
         out: set[date] = set()

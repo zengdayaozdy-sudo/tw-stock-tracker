@@ -789,6 +789,28 @@ def cmd_backfill_new(args) -> None:
     print(f"已回補 {'、'.join(todo)}：{json.dumps(result, ensure_ascii=False)}")
 
 
+def cmd_screen(args) -> None:
+    """全市場潛力股篩選：產生報告；--apply 才把入選股票加入自選股。"""
+    from pathlib import Path
+
+    from engine.screen import render_report, run_screen
+
+    settings, conn, repo, exchange, finmind = _services()
+    result = run_screen(repo, exchange, finmind, settings.plan.watchlist_limit)
+    report = render_report(result)
+    print(report)
+    out = Path(args.out or f"reports/screen-{result['as_of']}.md")
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(report, encoding="utf-8")
+    if args.apply and result["picks"]:
+        note = f"screen {result['as_of']}"
+        with conn.cursor() as cur:
+            cur.executemany("INSERT INTO watchlist (stock_id, note) VALUES (%s, %s) ON CONFLICT DO NOTHING",
+                            [(c.stock_id, note) for c in result["picks"]])
+        conn.commit()
+        print(f"已加入自選股 {len(result['picks'])} 檔；每日排程會依 FinMind 額度自動回補歷史")
+
+
 def cmd_backtest(args) -> None:
     from pathlib import Path
 
@@ -954,6 +976,11 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--years", type=int, default=5)
     p.add_argument("--limit", type=int, default=0, help="每次最多回補幾檔；0＝依本小時剩餘 FinMind 額度自動決定")
     p.set_defaults(func=cmd_backfill_new)
+
+    p = sub.add_parser("screen", help="全市場潛力股篩選（--apply 加入自選股）")
+    p.add_argument("--apply", action="store_true", help="把入選股票加入自選股")
+    p.add_argument("--out", help="報告輸出路徑（Markdown）")
+    p.set_defaults(func=cmd_screen)
 
     p = sub.add_parser("backtest", help="回測（預設調參區間；--holdout 保留驗證區間只能跑一次）")
     p.add_argument("--holdout", action="store_true", help="執行保留驗證區間（只允許一次）")

@@ -1,0 +1,31 @@
+# 全市場潛力股篩選（screen 指令，2026-11-12 擁有者要求自選股補到 100 檔）
+# 第一關用全市場免費資料（證交所／櫃買月營收、估值、法人、成交金額）；第二關只對候選股用 FinMind 抓一年股價算技術面
+target: 50                    # 這次要新增幾檔（加上現有自選股不超過方案上限）
+stage1:
+  min_market_cap: 10000000000   # 市值至少 100 億
+  min_avg_turnover: 200000000   # 近 5 日平均成交金額至少 2 億
+  min_avg_volume_lots: 1000     # 近 5 日平均成交量至少 1,000 張
+  min_price: 10
+  min_cum_revenue_yoy: 5        # 今年累計營收年增率至少 5%
+  min_month_revenue_yoy: -10    # 最新月營收年增率不低於 −10%（避免單月轉弱太多）
+  max_pe: 60                    # 本益比 0–60（虧損公司沒有本益比，不入選）
+  candidates: 150               # 進入第二關的檔數
+  weights:                      # 第一關排名權重（各項先換成百分位）
+    cum_revenue_yoy: 0.35
+    month_revenue_yoy: 0.20
+    institutional_ratio: 0.25   # 近 5 日外資＋投信買超張數 ÷ 5 日成交量
+    pe_inverse: 0.20            # 本益比越低越好
+stage2:
+  history_days: 400
+  rs_days: 120                  # 中期相對強弱：近 120 日報酬減加權指數，排除最近 20 日
+  rs_skip_days: 20
+  weights:
+    rs: 0.5
+    vs_ma240: 0.25              # 收盤相對年線
+    vs_ma60: 0.25               # 收盤相對季線
+final_weights:
+  stage1: 0.5
+  stage2: 0.5
+diversify:
+  max_per_industry: 8           # 新增名單中同一產業最多幾檔
+  min_per_industry: 3           # 加上現有自選股後，每個產業至少 3 檔才入選（同族群比較需要 3 檔以上）

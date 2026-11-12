@@ -66,6 +66,7 @@ twse:
     announcements: https://openapi.twse.com.tw/v1/opendata/t187ap04_L        # 每日重大訊息
     ex_dividend: https://openapi.twse.com.tw/v1/exchangeReport/TWT48U_ALL    # 除權除息預告表
     shareholder_meetings: https://openapi.twse.com.tw/v1/opendata/t187ap41_L # 股東會日期
+    month_revenue_all: https://openapi.twse.com.tw/v1/opendata/t187ap05_L    # 上市公司每月營收彙總（2026-11-12 實測 1,076 家）
     holidays: https://openapi.twse.com.tw/v1/holidaySchedule/holidaySchedule # 開休市日期
     # 盤中即時行情（基本市況報導網站，上市 tse_、上櫃 otc_ 都可查；2026-11-08 實測）
     realtime: https://mis.twse.com.tw/stock/api/getStockInfo.jsp
@@ -88,6 +89,7 @@ tpex:
     pledge: https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap09_O
     ex_dividend: https://www.tpex.org.tw/openapi/v1/tpex_exright_prepost
     shareholder_meetings: https://www.tpex.org.tw/openapi/v1/t187ap41_O
+    month_revenue_all: https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap05_O  # 上櫃公司每月營收彙總（2026-11-12 實測 897 家）
 
 tdcc:
   verified: true   # 2026-11-09 實測：CSV，約 7 萬列，只有最新一週
