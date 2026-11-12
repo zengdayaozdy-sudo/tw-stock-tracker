@@ -147,24 +147,23 @@ def _groups_of(groups: dict[str, tuple[str, set[str]]]) -> dict[str, list[str]]:
 
 # ---------- 執行 ----------
 
-def run_backtest(settings: Settings, repo: Repository, period: str = "tune", end: date | None = None,
-                 overrides: dict[str, str] | None = None, force: bool = False, save: bool = True) -> dict[str, Any]:
-    if overrides:
-        settings = apply_overrides(settings, overrides)
-    if end is None:
-        latest = repo.latest_series_date("taiex")
-        if latest is None:
-            raise BacktestError("沒有加權指數資料，請先執行 python -m engine.cli backtest-data")
-        end = latest
-    start, stop = periods(settings, end)[period]
-    if period in ("holdout", "full") and not force:
-        with repo.conn.cursor() as cur:
-            cur.execute("SELECT run_id, created_at FROM backtest_runs WHERE period IN ('holdout', 'full') LIMIT 1")
-            done = cur.fetchone()
-        if done:
-            raise BacktestError(f"保留驗證區間已在 {done[1]:%Y-%m-%d} 驗證過（run {done[0]}），只能驗證一次；"
-                                "若確定要重跑請加 --force（結果將不再是未經調參的驗證）")
+@dataclasses.dataclass
+class Context:
+    """回測需要的資料（讀一次，調參時重複使用）。"""
+    start: date
+    stop: date
+    frames: dict
+    groups: dict
+    series: dict
+    shares: dict
+    names: dict
+    calendar: pd.DatetimeIndex
+    adj_0050: Any
+    warnings: list[str]
+    planner: Planner | None = None
 
+
+def load_context(settings: Settings, repo: Repository, start: date, stop: date) -> Context:
     ids, warnings = universe_for_backtest(settings, repo)
     if not ids:
         raise BacktestError("沒有可回測的股票（免費模式請先加入自選股並回補歷史）")
@@ -186,26 +185,29 @@ def run_backtest(settings: Settings, repo: Repository, period: str = "tune", end
         raise BacktestError(f"{start} 至 {stop} 只有 {len(calendar)} 個交易日，資料不足")
     if not series["taiex"]:
         warnings.append("沒有加權指數歷史，大盤燈號與族群相對報酬不完整（執行 backtest-data）")
-
-    fp = fingerprint(settings, list(frames), repo, start, stop)
     adj_0050 = repo.adjustments(["0050"]).get("0050")
-    # 資料都已讀進記憶體：先結束讀取交易。模擬可能跑十幾分鐘，期間不再碰資料庫，
-    # 連線可能被資料庫閒置斷線，存檔前再確認並重連
-    repo.conn.rollback()
+    return Context(start, stop, frames, groups, series, shares, names, calendar, adj_0050, warnings)
 
-    planner = Planner(settings, frames, groups, series, shares)
+
+def evaluate(ctx: Context, settings: Settings, reuse_scores: bool = False) -> tuple[dict, dict, dict]:
+    """逐日訊號計畫＋交易模擬。reuse_scores：沿用上一次的評分快取（只改風控、濾網時用）。"""
+    if reuse_scores and ctx.planner is not None:
+        ctx.planner.retarget(settings)
+    else:
+        ctx.planner = Planner(settings, ctx.frames, ctx.groups, ctx.series, ctx.shares)
+    planner = ctx.planner
     plans = {}
-    for i, ts in enumerate(calendar):
+    for i, ts in enumerate(ctx.calendar):
         plans[ts.date()] = planner.day(ts.date())
-        if i % 50 == 0:
-            log.info("訊號計畫 %s（%d/%d）", ts.date(), i + 1, len(calendar))
-    log.info("交易模擬中")
-    result = simulate(plans, {sid: f.prices for sid, f in frames.items()}, calendar, settings, _groups_of(groups), names)
-    benchmarks = {k: series[k] for k in settings.backtest.get("benchmarks", []) if series.get(k)}
+        if i % 100 == 0:
+            log.info("訊號計畫 %s（%d/%d）", ts.date(), i + 1, len(ctx.calendar))
+    result = simulate(plans, {sid: f.prices for sid, f in ctx.frames.items()}, ctx.calendar, settings,
+                      _groups_of(ctx.groups), ctx.names)
+    benchmarks = {k: ctx.series[k] for k in settings.backtest.get("benchmarks", []) if ctx.series.get(k)}
     if "etf_0050" in benchmarks:  # 0050 還原除息與分割＝含息報酬
-        benchmarks["etf_0050"] = adjust_points(benchmarks["etf_0050"], adj_0050)
-    metrics = build_metrics(result, benchmarks, calendar[0].date(), calendar[-1].date())
-    metrics["universe"] = len(frames)
+        benchmarks["etf_0050"] = adjust_points(benchmarks["etf_0050"], ctx.adj_0050)
+    metrics = build_metrics(result, benchmarks, ctx.calendar[0].date(), ctx.calendar[-1].date())
+    metrics["universe"] = len(ctx.frames)
     metrics["bearish_days"] = sum(1 for p in plans.values() if p.light == "bearish")
     metrics["candidate_days"] = sum(1 for p in plans.values() if p.candidates)
     rebound_days: dict[str, int] = {}
@@ -213,6 +215,35 @@ def run_backtest(settings: Settings, repo: Repository, period: str = "tune", end
         if p.regime != "normal":
             rebound_days[p.regime] = rebound_days.get(p.regime, 0) + 1
     metrics["rebound_days"] = rebound_days
+    return metrics, result, plans
+
+
+def run_backtest(settings: Settings, repo: Repository, period: str = "tune", end: date | None = None,
+                 overrides: dict[str, str] | None = None, force: bool = False, save: bool = True) -> dict[str, Any]:
+    if overrides:
+        settings = apply_overrides(settings, overrides)
+    if end is None:
+        latest = repo.latest_series_date("taiex")
+        if latest is None:
+            raise BacktestError("沒有加權指數資料，請先執行 python -m engine.cli backtest-data")
+        end = latest
+    start, stop = periods(settings, end)[period]
+    if period in ("holdout", "full") and not force:
+        with repo.conn.cursor() as cur:
+            cur.execute("SELECT run_id, created_at FROM backtest_runs WHERE period IN ('holdout', 'full') LIMIT 1")
+            done = cur.fetchone()
+        if done:
+            raise BacktestError(f"保留驗證區間已在 {done[1]:%Y-%m-%d} 驗證過（run {done[0]}），只能驗證一次；"
+                                "若確定要重跑請加 --force（結果將不再是未經調參的驗證）")
+
+    ctx = load_context(settings, repo, start, stop)
+    warnings = ctx.warnings
+    fp = fingerprint(settings, list(ctx.frames), repo, start, stop)
+    # 資料都已讀進記憶體：先結束讀取交易。模擬可能跑十幾分鐘，期間不再碰資料庫，
+    # 連線可能被資料庫閒置斷線，存檔前再確認並重連
+    repo.conn.rollback()
+    metrics, result, _plans = evaluate(ctx, settings)
+    calendar = ctx.calendar
     params = {"overrides": overrides or {}}
     report = render_markdown(metrics, period, settings.plan.label, warnings, params) + f"\n指紋：`{fp}`\n"
     run_id = None

@@ -42,7 +42,15 @@ def _services():
     finmind = FinMindClient.create(settings, http, on_record=repo.record_api_usage)
     now = datetime.now(TZ).replace(minute=0, second=0, microsecond=0)
     finmind.quota.preload(repo.api_usage("finmind", now))
+    finmind.quota.keepalive = lambda: _keepalive(conn)
     return settings, conn, repo, ExchangeClient(settings, http), finmind
+
+
+def _keepalive(conn) -> None:
+    """提交目前交易並確認連線還在（等待 API 額度時用）。"""
+    conn.commit()
+    conn.execute("SELECT 1")
+    conn.commit()
 
 
 def cmd_plan(_args) -> None:
@@ -832,6 +840,34 @@ def cmd_backtest(args) -> None:
     print(f"報告：{out}" + (f"（run {result['run_id']}）" if result["run_id"] else ""))
 
 
+def cmd_tune(args) -> None:
+    """正式回測調參（只用調參區間）：報告與最佳參數寫到 reports/。"""
+    from pathlib import Path
+
+    from engine.backtest.runner import BacktestError
+    from engine.backtest.tune import best_overrides_yaml, load_tune_config, render_tune, run_tune
+    from engine.db import connect
+    from engine.repository import Repository
+
+    settings = load_settings()
+    cfg = load_tune_config()
+    if args.rounds:
+        cfg["rounds"] = args.rounds
+    if args.no_rescoring:
+        cfg["rescoring"] = []
+    try:
+        res = run_tune(settings, Repository(connect()), cfg)
+    except BacktestError as e:
+        raise SystemExit(f"無法調參：{e}") from e
+    report = render_tune(res, cfg)
+    print(report)
+    out = Path("reports")
+    out.mkdir(parents=True, exist_ok=True)
+    (out / "tune-report.md").write_text(report, encoding="utf-8")
+    (out / "tune-best.yaml").write_text(best_overrides_yaml(res), encoding="utf-8")
+    print("報告：reports/tune-report.md、最佳參數：reports/tune-best.yaml")
+
+
 def cmd_setup_study(args) -> None:
     from pathlib import Path
 
@@ -991,6 +1027,11 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--out", help="報告輸出路徑（Markdown）")
     p.add_argument("--no-save", action="store_true", help="不寫入 backtest_runs")
     p.set_defaults(func=cmd_backtest)
+
+    p = sub.add_parser("tune", help="正式回測調參（座標輪替法，只用調參區間）")
+    p.add_argument("--rounds", type=int, help="輪數（預設看 config/tune.yaml）")
+    p.add_argument("--no-rescoring", action="store_true", help="不比較評分權重組合")
+    p.set_defaults(func=cmd_tune)
 
     p = sub.add_parser("setup-study", help="醞釀名單事件研究（預設調參區間）")
     p.add_argument("--full", action="store_true", help="含保留驗證區間")

@@ -1,0 +1,28 @@
+# 正式回測調參（tune 指令，2026-11-12 擁有者決定目標：最大回撤 15% 以內、年化報酬最高）
+# 只在調參區間執行（config/backtest.yaml 的保留區間不參與）；以座標輪替法逐一調整參數，重複 rounds 輪直到不再改善
+objective:
+  max_drawdown: -0.15          # 最大回撤不可低於 −15%
+  min_trades: 30               # 交易次數太少的組合不採用（避免偶然）
+rounds: 2
+# 只改風控與濾網的參數：沿用同一份評分快取，每組只需重算訊號與模擬
+params:
+  risk.stop_loss.percent: [0.06, 0.08, 0.10, 0.12]
+  risk.stop_loss.bearish_market_percent: [0.04, 0.05, 0.07]
+  risk.take_profit.trailing_percent: [0.08, 0.10, 0.15, 0.20]
+  risk.exit.trailing_activation: [0.03, 0.05, 0.08]
+  risk.exit.min_score: [40, 45, 50, 55]
+  risk.exit.max_holding_days_no_gain: [10, 20, 30, 40]
+  risk.position.risk_per_trade: [0.01, 0.015, 0.02]
+  risk.position.max_position_pct: [0.10, 0.12, 0.15]
+  risk.position.max_holdings: [5, 8, 10]
+  risk.trigger_window_days: [1, 3, 5]
+  risk.institutional_buy_streak_days: [3, 5]
+  filters.market_light.bearish_threshold: [-1, -2, -3]
+# 會改變評分的參數：每組要重新評分，最後在最佳風控參數下比較
+rescoring:
+  - name: 現行權重
+    set: {}
+  - name: 短線技術更重
+    set: {scoring.weights.short.fundamental: 0.10, scoring.weights.short.technical: 0.60, scoring.weights.short.chips: 0.30}
+  - name: 短線籌碼更重
+    set: {scoring.weights.short.fundamental: 0.15, scoring.weights.short.technical: 0.40, scoring.weights.short.chips: 0.45}

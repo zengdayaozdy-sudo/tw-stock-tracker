@@ -26,6 +26,9 @@ class QuotaTracker:
     sleep: Callable[[float], None] = time.sleep
     on_record: Callable[[str, datetime, int], None] | None = None  # 寫入 api_usage
     max_wait_seconds: float = 3700
+    # 等待額度時先提交資料庫交易、每隔幾分鐘碰一下連線：交易開著閒置會被 Neon 切斷（2026-11-12 事件）
+    keepalive: Callable[[], None] | None = None
+    keepalive_seconds: float = 240
     _hour: datetime | None = field(default=None, init=False)
     _calls: int = field(default=0, init=False)
 
@@ -57,8 +60,20 @@ class QuotaTracker:
             if wait > self.max_wait_seconds:
                 raise RuntimeError(f"{self.provider} 額度已用完，等待時間過長")
             log.warning("%s 本小時額度已用 %d 次，暫停 %.0f 秒", self.provider, self._calls, wait)
-            self.sleep(wait)
+            self._wait(wait)
             self._roll()
         self._calls += 1
         if self.on_record:
             self.on_record(self.provider, self._hour, self._calls)
+
+    def _wait(self, seconds: float) -> None:
+        if self.keepalive is None:
+            self.sleep(seconds)
+            return
+        self.keepalive()
+        left = seconds
+        while left > 0:
+            step = min(self.keepalive_seconds, left)
+            self.sleep(step)
+            left -= step
+            self.keepalive()

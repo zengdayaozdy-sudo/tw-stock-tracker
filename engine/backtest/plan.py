@@ -72,6 +72,8 @@ class Planner:
         self.series = series
         self.shares = shares
         self.indicators = CachedIndicators(frames, settings.scoring)
+        # 每日評分結果快取（stock_id, horizon, total）：調參只改風控、濾網時不必重新評分（tune 指令）
+        self._scores: dict[date, list[tuple[str, str, float]]] = {}
         self.closes = {sid: f.prices["close"].astype(float).dropna() for sid, f in frames.items()}
         taiex = series.get("taiex") or []
         self.taiex = pd.Series({pd.Timestamp(d): v for d, v in taiex}, dtype=float).sort_index()
@@ -85,6 +87,10 @@ class Planner:
             self.volume = vols.sum(axis=1, min_count=1).dropna().sort_index()
             oi = series.get("foreign_tx_oi") or []
             self.foreign_oi = pd.Series({pd.Timestamp(d): v for d, v in oi}, dtype=float).sort_index()
+
+    def retarget(self, settings: Settings) -> None:
+        """換成另一組設定（評分與反彈寬度設定必須相同，評分快取才有效）。"""
+        self.settings = settings
 
     def _frames_on(self, d: date) -> dict[str, StockFrames]:
         """市值依當天收盤 × 股數（股數為目前資料，屬近似）。"""
@@ -104,13 +110,16 @@ class Planner:
         regime = market_regime(light.light, rebound.state if rebound else None, s.risk)
         plan = DayPlan(d, light.light, rebound.state if rebound else None, regime["mode"])
 
-        frames = self._frames_on(d)
-        results = score_universe(s, frames, self.groups, d, indicator_fn=self.indicators)
+        scored = self._scores.get(d)
+        if scored is None:
+            frames = self._frames_on(d)
+            results = score_universe(s, frames, self.groups, d, indicator_fn=self.indicators)
+            scored = [(r.stock_id, r.horizon, r.total) for r in results if r.status == "ok" and r.total is not None]
+            self._scores[d] = scored
         totals = {h: {} for h in HORIZONS}
-        for r in results:
-            if r.status == "ok" and r.total is not None:
-                totals[r.horizon][r.stock_id] = r.total
-                plan.scores.setdefault(r.stock_id, {})[r.horizon] = {"date": d.isoformat(), "total": r.total}
+        for sid, horizon, total in scored:
+            totals[horizon][sid] = total
+            plan.scores.setdefault(sid, {})[horizon] = {"date": d.isoformat(), "total": total}
 
         # 族群強弱（範圍：回測的全部股票）
         gcfg = s.filters["group_strength"]

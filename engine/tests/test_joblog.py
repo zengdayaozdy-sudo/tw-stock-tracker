@@ -82,3 +82,18 @@ def test_original_error_kept_when_reconnect_fails(monkeypatch):
         with job_run(conn, "fetch"):
             conn.lost = True
             raise ValueError("boom")
+
+
+def test_quota_wait_keeps_connection_alive():
+    from datetime import datetime
+
+    from engine.config import TZ
+    from engine.sources.quota import QuotaTracker
+
+    slept, pings = [], []
+    q = QuotaTracker("finmind", 10, 1.0, clock=lambda: datetime(2026, 11, 12, 21, 50, tzinfo=TZ),
+                     sleep=slept.append, keepalive=lambda: pings.append(1), keepalive_seconds=240)
+    q.preload(10)
+    q.acquire()
+    assert sum(slept) == 605 and max(slept) <= 240
+    assert len(pings) == len(slept) + 1     # 先提交一次，之後每段睡完都碰一下連線
