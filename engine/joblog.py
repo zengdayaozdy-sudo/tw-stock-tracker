@@ -56,13 +56,28 @@ def job_run(conn, job: str, run_date: date | None = None) -> Iterator[JobRun]:
     try:
         yield run
     except BaseException as e:
-        conn.rollback()
         run.note(error=str(e), traceback=traceback.format_exc()[-2000:])
-        run.finish("failed")
+        try:
+            conn.rollback()
+            run.finish("failed")
+        except Exception:
+            # 連線已被切斷（例如 Neon 逾時）：另開連線記成失敗，否則紀錄會一直停在 running，警告也看不到真正原因
+            _finish_on_new_connection(run, "failed")
         raise
     else:
         conn.commit()
         run.finish()
+
+
+def _finish_on_new_connection(run: JobRun, status: str) -> None:
+    from engine.db import connect
+
+    try:
+        with connect() as fresh:
+            run.conn = fresh
+            run.finish(status)
+    except Exception:
+        pass  # 補記失敗不可蓋掉原本的錯誤；超過 STALE_RUNNING_MINUTES 後會被標為失敗
 
 
 def heartbeat(conn, job: str, detail: dict | None = None) -> None:

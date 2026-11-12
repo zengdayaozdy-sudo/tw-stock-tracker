@@ -90,6 +90,8 @@ def cmd_fetch(args) -> None:
         # 官方資料尚未更新或不完整：每 10 分鐘重試，最多等 --wait-minutes 分鐘
         while (reason := pending(result)) and waited < args.wait_minutes and _is_trading_day(exchange, trade_date):
             logging.info("%s，10 分鐘後重試", reason)
+            # 先把這一輪寫入的資料提交，結束交易再睡；交易開著閒置 10 分鐘會被 Neon 以 idle-in-transaction 逾時切斷連線
+            conn.commit()
             time.sleep(600)
             waited += 10
             result = fetch_daily(settings, repo, exchange, finmind, trade_date)

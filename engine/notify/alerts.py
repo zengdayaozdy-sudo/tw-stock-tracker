@@ -43,7 +43,9 @@ def collect_alerts(settings: Settings, repo: Repository, as_of: date, now: datet
     elif fetch["status"] == "failed":
         alerts.append(f"資料抓取失敗：{str(fetch['detail'].get('error', ''))[:200]}")
     elif fetch["status"] == "running":
-        alerts.append("資料抓取未完成（可能逾時或中斷）")
+        started = fetch.get("started_at")
+        elapsed = f"已執行 {int((now - started).total_seconds() // 60)} 分鐘，" if started else ""
+        alerts.append(f"資料抓取未完成（{elapsed}可能逾時或中斷），請到 GitHub Actions 看該次執行的錯誤")
     else:
         quality = fetch["detail"].get("quality") or {}
         if quality.get("ok") is False:

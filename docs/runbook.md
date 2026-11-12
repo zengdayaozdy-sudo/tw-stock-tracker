@@ -184,6 +184,7 @@ python -m engine.cli notify --date 2026-11-06 --resend
 |---|---|---|
 | LINE 收到「資料完整性檢查未通過，今日暫停訊號」 | 官方資料筆數不足、自選股缺價、日期不符 | 系統狀態頁看錯誤明細；通常是官方資料延遲，稍後手動重跑每日排程 |
 | 「官方資料尚未更新」、當天沒有報告 | 證交所 15:30 後仍未更新且等了 90 分鐘 | 手動重跑每日排程（不填日期） |
+| 「資料抓取未完成（已執行 N 分鐘…）」 | 抓取步驟中途當掉，例如 Neon 切斷閒置連線（2026-11-12 晚間補抓等融資融券時發生，已修正為等待前先提交交易） | Actions 頁面看該次執行的錯誤；晚間補抓在 22:10 後手動重跑，phase 選 evening |
 | 「排程未執行」 | GitHub 排程大幅延遲、Actions 故障，或 workflow 被停用（公開 repo 60 天無活動會自動停用；本 repo 為私人，但仍可能被手動停用） | Actions 頁面確認 workflow 為 Enabled，並手動執行一次 |
 | 「FinMind 額度用盡」 | 一次回補太多檔 | 程式會暫停到下一個整點後繼續；減少 `backfill-new --limit` 或分天回補 |
 | 「盤中停損監控可能已停止」 | Mac 睡眠、關機或程式錯誤 | 看 `monitor.log`；`launchctl kickstart -k gui/$(id -u)/com.twstock.monitor` 重啟 |
