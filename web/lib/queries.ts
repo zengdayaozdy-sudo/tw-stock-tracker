@@ -270,6 +270,20 @@ export async function stockNews(id: string, limit = 30) {
     FROM news WHERE stock_id = ${id} ORDER BY published_at DESC LIMIT ${limit}`;
 }
 
+/** 族群與盤勢消息（Yahoo股市 RSS 的族群關鍵字、盤勢分類；沒提到個別自選股的新聞）。利空優先。 */
+export async function scopeNews(days = 3, limit = 60) {
+  return (await db()`
+    SELECT news_id, published_at, source, title, url, scope, topic, is_major_negative, event_type, confidence, summary,
+      judged_by
+    FROM news
+    WHERE scope <> 'stock' AND published_at >= now() - make_interval(days => ${days})
+    ORDER BY is_major_negative DESC NULLS LAST, published_at DESC LIMIT ${limit}`) as unknown as {
+    news_id: string; published_at: Date; source: string; title: string; url: string | null; scope: "group" | "market";
+    topic: string | null; is_major_negative: boolean | null; event_type: string | null; confidence: number | null;
+    summary: string | null; judged_by: string | null;
+  }[];
+}
+
 export async function stockEvents(id: string, from: string) {
   return await db()`
     SELECT event_id, date, event_type, note, source FROM events WHERE stock_id = ${id} AND date >= ${from}

@@ -1,14 +1,16 @@
 import Link from "next/link";
 import { Change, Panel } from "@/components/ui";
 import { Updated } from "@/components/Updated";
-import { dateLabel, num } from "@/lib/format";
-import { dataUpdates, groupsWithMembers, latestDate, market } from "@/lib/queries";
+import { dateLabel, num, pct, timeTaipei } from "@/lib/format";
+import { dataUpdates, groupsWithMembers, latestDate, market, scopeNews } from "@/lib/queries";
 import { requireSession } from "@/lib/session";
 
 export default async function GroupsPage() {
   await requireSession();
   const date = await latestDate();
-  const [m, all, upd] = await Promise.all([date ? market(date) : null, groupsWithMembers(), dataUpdates()]);
+  const [m, all, upd, news] = await Promise.all([
+    date ? market(date) : null, groupsWithMembers(), dataUpdates(), scopeNews(),
+  ]);
   const strength = m?.groups ?? [];
   const ranked = new Set(strength.map((g) => g.name));
   const others = all.filter((g) => !ranked.has(g.name) && (g.members as string[]).length);
@@ -76,6 +78,49 @@ export default async function GroupsPage() {
           </Panel>
         </>
       )}
+
+      <div style={{ height: 14 }} />
+      <Panel
+        icon="shield"
+        title="族群與盤勢消息"
+        meta={<>近 3 天 {news.length} 則<span className="sep">｜</span>Yahoo股市<span className="sep">｜</span><Updated at={upd.news} label="判讀" /></>}
+      >
+        {news.length ? (
+          <div className="table-wrap">
+            <table>
+              <tbody>
+                {news.map((n) => (
+                  <tr key={n.news_id}>
+                    <td className="num small faint">{timeTaipei(n.published_at)}</td>
+                    <td className="small">{n.scope === "group" ? "族群" : "盤勢"}{n.topic ? `｜${n.topic}` : ""}</td>
+                    <td className="wrap">
+                      {n.url ? (
+                        <a href={n.url} target="_blank" rel="noreferrer">{n.title}</a>
+                      ) : (
+                        n.title
+                      )}
+                      <div className="small muted">
+                        {n.is_major_negative === null ? (
+                          "尚未判讀"
+                        ) : n.is_major_negative ? (
+                          <span className="tag warn">
+                            {n.event_type ?? "利空"} {pct(n.confidence, 0, false)}
+                          </span>
+                        ) : (
+                          <span className="tag ok">非利空</span>
+                        )}{" "}
+                        {n.summary}｜{n.source}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <p className="empty">近 3 天沒有族群或盤勢新聞</p>
+        )}
+      </Panel>
     </>
   );
 }

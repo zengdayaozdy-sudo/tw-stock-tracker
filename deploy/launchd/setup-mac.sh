@@ -10,8 +10,10 @@ cd "$REPO"
 
 step() { print -P "\n%F{cyan}▸ $1%f"; }
 
-step "更新程式碼"
-git pull --ff-only || print "（略過：本機有修改或沒有網路，沿用目前版本）"
+if [[ -d .git ]] && xcode-select -p >/dev/null 2>&1; then
+  step "更新程式碼"
+  git pull --ff-only || print "（略過：本機有修改或沒有網路，沿用目前版本）"
+fi
 
 step "尋找 Python 3.12 以上"
 PY=""
