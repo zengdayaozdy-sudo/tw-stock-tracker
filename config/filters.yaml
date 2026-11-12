@@ -3,7 +3,7 @@
 news:
   confidence_threshold: 0.7     # 判定為重大利空且信心度 ≥ 此值才排除
   lookback_days: 3              # 排除最近幾個日曆天內的利空（涵蓋週末公告）
-  max_judgments_per_run: 200    # 每次最多判讀幾則，控制 AI 成本
+  max_judgments_per_run: 500    # 每次最多判讀幾則，控制 AI 成本（個股新聞優先）
   negative_event_types:
     - 財測下修
     - 處置
@@ -22,8 +22,31 @@ news:
     現金增資: [現金增資, 現增]
     虧損擴大: [虧損擴大, 鉅額虧損, 重大虧損]
     停工或重大災害: [停工, 火災, 爆炸, 停產, 重大災害]
+  # 產業、政策類利空（2026-11-12 擁有者要求消息面要涵蓋所有會影響股票的新聞）
+  # 個股、族群、盤勢新聞都比對；命中只加警示不排除。上面的 rule_keywords 只套用在個股新聞
+  scope_rule_keywords:
+    產業需求轉弱: [砍單, 需求疲弱, 需求轉弱, 庫存調整, 下修展望, 報價下跌, 報價走跌, 價格崩跌, 跌價]
+    政策與地緣風險: [出口管制, 實體清單, 制裁, 加徵關稅, 禁令, 禁售]
+  scope_actions:
+    group: warn                 # 族群利空：該族群的自選股加警示（none 停用）
+    market: warn                # 盤勢利空：全部自選股加警示（none 停用）
   # 財經新聞 RSS（選用）。{stock_id} 會換成股票代號；請只放條款允許自動讀取的來源
   rss_feeds: []
+  # Yahoo股市 RSS（2026-11-12 實測可用）。條款：個人與非營利組織可於私人、非商業用途免費使用，須保留每則訊息出處
+  # 來源：https://tw.stock.yahoo.com/rss-index 、https://tw.stock.yahoo.com/rss-help
+  yahoo_rss:
+    enabled: true
+    attribution: Yahoo股市
+    stock_url: "https://tw.stock.yahoo.com/rss?s={stock_id}"       # 個股新聞與研究報告（一次一檔）
+    keyword_url: "https://tw.stock.yahoo.com/rss?q={keyword}"      # 關鍵字新聞
+    category_url: "https://tw.stock.yahoo.com/rss?category={category}"
+    group_keywords: true        # 自選股所屬族群名稱當關鍵字（產業別去掉「業」字）
+    group_kinds: null           # null＝產業別與自訂族群都用；只要自訂族群填 [custom]
+    extra_keywords: [輝達, 費城半導體, 出口管制, 關稅, 聯準會]   # 盤勢關鍵字
+    categories:
+      tw-market: 台股動態
+      intl-markets: 國際財經
+    max_items_per_feed: 30
 
 market_light:
   # 每項輸入給 +1 偏多 / 0 中性 / -1 偏空，加總後判斷燈號；缺資料的輸入以 0 計

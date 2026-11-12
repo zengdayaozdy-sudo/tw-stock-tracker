@@ -109,7 +109,7 @@ def test_portfolio_stats(repo):
     st = portfolio_stats(repo, AS_OF)
     assert st["closed_trades"] == 1 and st["win_rate"] == 1.0
     assert st["realized_pnl"] == 40_000 and st["unrealized_pnl"] == 0
-    assert st["portfolio_return"] == pytest.approx(0.04)
+    assert st["portfolio_return"] == pytest.approx(0.2)  # 總資金＝目前持股成本：2317 一張 200 元＝200,000
     assert st["benchmarks"]["taiex"] == pytest.approx(0.05)
     assert st["benchmarks"]["etf_0050"] is None    # 尚無 0050 資料
 

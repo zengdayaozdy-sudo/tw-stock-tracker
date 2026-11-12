@@ -213,11 +213,11 @@ class Repository:
         rows = list(rows)
         with self.conn.cursor() as cur:
             cur.executemany(
-                "INSERT INTO news (stock_id, published_at, source, title, url, body, dedup_key) "
-                "VALUES (%s, %s, %s, %s, %s, %s, %s) ON CONFLICT DO NOTHING",
+                "INSERT INTO news (stock_id, published_at, source, title, url, body, dedup_key, scope, topic) "
+                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) ON CONFLICT DO NOTHING",
                 [
                     (r["stock_id"], r["published_at"], r["source"], r["title"], r.get("url"), r.get("body"),
-                     r["dedup_key"])
+                     r["dedup_key"], r.get("scope") or "stock", r.get("topic"))
                     for r in rows
                 ],
             )
@@ -233,12 +233,12 @@ class Repository:
     def unjudged_news(self, ids: list[str], since: datetime, limit: int) -> list[dict]:
         with self.conn.cursor() as cur:
             cur.execute(
-                "SELECT news_id, stock_id, published_at, source, title, body, url FROM news "
-                "WHERE stock_id = ANY(%s) AND published_at >= %s AND is_major_negative IS NULL "
-                "ORDER BY published_at DESC LIMIT %s",
+                "SELECT news_id, stock_id, published_at, source, title, body, url, scope, topic FROM news "
+                "WHERE (stock_id = ANY(%s) OR scope <> 'stock') AND published_at >= %s AND is_major_negative IS NULL "
+                "ORDER BY (scope = 'stock') DESC, published_at DESC LIMIT %s",
                 (ids, since, limit),
             )
-            cols = ("news_id", "stock_id", "published_at", "source", "title", "body", "url")
+            cols = ("news_id", "stock_id", "published_at", "source", "title", "body", "url", "scope", "topic")
             return [dict(zip(cols, r, strict=True)) for r in cur.fetchall()]
 
     def save_judgment(self, news_id: int, j: dict) -> None:
@@ -253,13 +253,13 @@ class Repository:
     def negative_news(self, ids: list[str], since: datetime, until: datetime) -> list[dict]:
         with self.conn.cursor() as cur:
             cur.execute(
-                "SELECT news_id, stock_id, published_at, title, url, event_type, confidence, summary, judged_by "
-                "FROM news WHERE stock_id = ANY(%s) AND published_at BETWEEN %s AND %s "
-                "AND is_major_negative ORDER BY published_at",
+                "SELECT news_id, stock_id, published_at, title, url, event_type, confidence, summary, judged_by, "
+                "scope, topic FROM news WHERE (stock_id = ANY(%s) OR scope <> 'stock') "
+                "AND published_at BETWEEN %s AND %s AND is_major_negative ORDER BY published_at",
                 (ids, since, until),
             )
             cols = ("news_id", "stock_id", "published_at", "title", "url", "event_type", "confidence", "summary",
-                    "judged_by")
+                    "judged_by", "scope", "topic")
             return [dict(zip(cols, r, strict=True)) for r in cur.fetchall()]
 
     def events_between(self, ids: list[str], start: date, end: date) -> list[dict]:

@@ -458,7 +458,7 @@ def cmd_news(args) -> None:
         result = run_news(settings, repo, exchange, exchange.http, judge, as_of, collect=not args.no_collect)
         run.note(**{k: v for k, v in result.items() if k != "flags"}, flagged=len(result["flags"]))
     print(f"消息面排雷：收集 {result.get('collected', 0)} 則、判讀 {result['judged']} 則"
-          f"（{result['judged_by'] or '無'}），排除 {result['excluded']} 檔")
+          f"（{result['judged_by'] or '無'}），排除 {result['excluded']} 檔、警示 {result.get('warned', 0)} 檔")
     for e in result.get("errors", []) + result.get("ai_errors", []):
         print(f"  注意：{e}")
     _print_flags(result["flags"])

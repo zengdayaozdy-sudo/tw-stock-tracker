@@ -13,7 +13,7 @@ from engine.filters.events import TradingCalendar, event_flags, index_review_eve
 from engine.filters.groups import group_strength, weak_group_flags
 from engine.filters.liquidity import AVG_DAYS, liquidity_flags
 from engine.filters.market_light import MarketLight, compute_light
-from engine.filters.news import dedup_key, news_flags, parse_rss
+from engine.filters.news import assign_feed_items, dedup_key, news_flags, parse_rss, yahoo_feeds
 from engine.filters.rebound import Rebound, breadth_frame, compute_rebound, evidence_text
 from engine.pipeline import universe
 from engine.repository import Repository
@@ -92,11 +92,50 @@ def collect_news(settings: Settings, repo: Repository, exchange, http, ids: list
                 items += parse_rss(http.get_text(url), sid, "rss")
             except Exception as e:
                 errors.append(f"RSS 抓取失敗 {url}：{e}")
+    yahoo_cfg = settings.filters["news"].get("yahoo_rss") or {}
+    yahoo_count = 0
+    if yahoo_cfg.get("enabled") and http is not None:
+        yahoo_items = _collect_yahoo(yahoo_cfg, repo, http, ids, as_of or date.today(),
+                                     settings.filters["news"]["lookback_days"], errors)
+        yahoo_count = len(yahoo_items)
+        items += yahoo_items
     for it in items:
         it["dedup_key"] = dedup_key(it)
     repo.insert_news(items)
     repo.conn.commit()
-    return {"collected": len(items), "announcement_source": source, "errors": errors}
+    return {"collected": len(items), "yahoo_rss": yahoo_count, "announcement_source": source, "errors": errors}
+
+
+def _news_groups(repo: Repository, kinds: list[str] | None = None) -> dict[str, set[str]]:
+    """族群名稱 → 成分股（消息面用：族群關鍵字新聞、族群利空警示）。"""
+    from engine.scoring.loader import load_groups
+
+    return {name: members for name, (kind, members) in load_groups(repo).items()
+            if kinds is None or kind in kinds}
+
+
+def _collect_yahoo(cfg: dict, repo: Repository, http, ids: list[str], as_of: date, lookback_days: int,
+                   errors: list[str]) -> list[dict]:
+    """Yahoo股市 RSS：個股新聞＋族群關鍵字＋盤勢分類，只留 lookback_days 內的新聞。"""
+    groups = _news_groups(repo, cfg.get("group_kinds"))
+    names = repo.stock_names(ids)
+    cutoff = _day_start(as_of - timedelta(days=lookback_days))
+    per_feed = int(cfg.get("max_items_per_feed", 30))
+    out: list[dict] = []
+    failed = 0
+    for feed in yahoo_feeds(cfg, ids, groups):
+        try:
+            raw = parse_rss(http.get_text(feed["url"]), feed["stock_id"], cfg.get("attribution", "Yahoo股市"))
+        except Exception as e:
+            failed += 1
+            if failed <= 5:
+                errors.append(f"Yahoo股市 RSS 抓取失敗（{feed['topic'] or feed['stock_id']}）：{e}")
+            continue
+        recent = [it for it in raw if it["published_at"] >= cutoff][:per_feed]
+        out += assign_feed_items(feed, recent, names)
+    if failed > 5:
+        errors.append(f"Yahoo股市 RSS 共 {failed} 個來源抓取失敗")
+    return out
 
 
 def judge_news(settings: Settings, repo: Repository, judge, ids: list[str], as_of: date) -> dict[str, Any]:
@@ -123,10 +162,12 @@ def run_news(settings: Settings, repo: Repository, exchange, http, judge, as_of:
         out.update(collect_news(settings, repo, exchange, http, ids, as_of))
     out.update(judge_news(settings, repo, judge, ids, as_of))
     since = _day_start(as_of - timedelta(days=cfg["lookback_days"]))
-    flags = news_flags(repo.negative_news(ids, since, _day_end(as_of)), cfg)
+    groups = _news_groups(repo)
+    flags = news_flags(repo.negative_news(ids, since, _day_end(as_of)), cfg, groups, ids)
     repo.replace_flags(as_of, "news", flags)
     repo.conn.commit()
-    out["excluded"] = len({f["stock_id"] for f in flags})
+    out["excluded"] = len({f["stock_id"] for f in flags if f["kind"] == "exclude"})
+    out["warned"] = len({f["stock_id"] for f in flags if f["kind"] == "warn"})
     out["flags"] = flags
     return out
 

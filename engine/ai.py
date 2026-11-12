@@ -70,7 +70,11 @@ def build_prompt(item: dict, event_types: list[str]) -> tuple[str, str]:
         "只輸出符合格式的 JSON。"
     )
     body = (item.get("body") or "")[:2500]
-    user = f"股票代號：{item['stock_id']}\n標題：{item['title']}\n內容：{body or '（無）'}"
+    if item.get("stock_id"):
+        target = f"股票代號：{item['stock_id']}"
+    else:  # 產業或盤勢消息：判斷是否為整個族群或大盤的利空
+        target = f"消息範圍：{'族群' if item.get('scope') == 'group' else '盤勢'}「{item.get('topic') or ''}」"
+    user = f"{target}\n標題：{item['title']}\n內容：{body or '（無）'}"
     return system, user
 
 
@@ -122,12 +126,16 @@ class RuleJudge:
 
     def __init__(self, cfg: dict):
         self.keywords: dict[str, list[str]] = cfg.get("rule_keywords") or {}
+        # 產業、政策類利空：個股、族群、盤勢消息都比對；個股專用的關鍵字（訴訟、現增…）不套用到產業與盤勢消息
+        self.scope_keywords: dict[str, list[str]] = cfg.get("scope_rule_keywords") or {}
         self.confidence = float(cfg.get("rule_confidence", 0.75))
 
     def judge(self, item: dict) -> Judgment:
         title = item.get("title") or ""
         text = f"{title}\n{strip_form_hints(item.get('body') or '')[:300]}"
-        for event, words in self.keywords.items():
+        stock_scope = (item.get("scope") or "stock") == "stock"
+        keywords = {**self.keywords, **self.scope_keywords} if stock_scope else self.scope_keywords
+        for event, words in keywords.items():
             for w in words:
                 if w in title:
                     return Judgment(item["stock_id"], True, event, self.confidence, f"標題含「{w}」", item.get("url"),
@@ -245,7 +253,8 @@ class FallbackJudge:
 
 def create_judge(settings: Settings, on_claude_call=None) -> FallbackJudge:
     cfg = settings.filters["news"]
-    event_types = list(cfg["negative_event_types"])
+    event_types = list(cfg["negative_event_types"]) + [e for e in (cfg.get("scope_rule_keywords") or {})
+                                                       if e not in cfg["negative_event_types"]]
     rules = RuleJudge(cfg)
     provider = (os.environ.get("AI_PROVIDER") or "ollama").strip().lower()
     ai_cfg = settings.sources.get("ai", {})
