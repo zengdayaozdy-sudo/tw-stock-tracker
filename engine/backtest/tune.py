@@ -129,7 +129,8 @@ def run_tune(settings: Settings, repo, cfg: dict[str, Any] | None = None, progre
     rescored: list[Trial] = []
     for variant in cfg.get("rescoring") or []:
         values = {**best_values, **(variant.get("set") or {})}
-        rescored.append(run(values, f"評分組合：{variant['name']}", rescore=bool(variant.get("set"))))
+        t = run(values, f"評分組合：{variant['name']}", rescore=bool(variant.get("set")))
+        rescored.append(Trial(t.overrides, t.metrics, t.seconds, f"評分組合：{variant['name']}"))  # 快取結果換上組合名稱
     winner = max([best, *rescored], key=lambda t: t.key(obj))
     return TuneResult(baseline, winner, list(cache.values()), steps, rescored, (start, stop), len(ctx.frames))
 
