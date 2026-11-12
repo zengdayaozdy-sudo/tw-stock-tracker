@@ -1,17 +1,17 @@
-import { saveCapital, saveNotify } from "@/app/actions";
+import { saveNotify } from "@/app/actions";
 import { ActionForm } from "@/components/ActionForm";
 import { Panel } from "@/components/ui";
 import { money, pct, timeTaipei } from "@/lib/format";
-import { runtimeConfig, setting, settingsUpdated } from "@/lib/queries";
+import { runtimeConfig, setting, settingsUpdated, totalCapital } from "@/lib/queries";
 import { requireSession } from "@/lib/session";
 
 export default async function SettingsPage() {
   await requireSession();
   const [{ config, synced }, capital, notify, setUpd] = await Promise.all([
     runtimeConfig(),
-    setting<number>("total_capital", 1_000_000),
+    totalCapital(),
     setting<Record<string, boolean>>("notify", {}),
-    settingsUpdated(["total_capital", "notify"]),
+    settingsUpdated(["notify"]),
   ]);
   const modified = (k: string) => (setUpd[k] ? `${timeTaipei(setUpd[k])} 修改` : "尚未修改");
   const prefs = { daily_report: true, intraday_stop_loss: true, system_alerts: true, ...notify };
@@ -20,19 +20,14 @@ export default async function SettingsPage() {
   return (
     <>
       <h1>設定</h1>
-      <p className="sub">總資金影響建議張數；方案模式由環境變數 PLAN 決定</p>
+      <p className="sub">總資金依目前持股成本自動計算，影響建議張數；方案模式由環境變數 PLAN 決定</p>
 
       <div className="grid two">
-        <Panel title="總資金" meta={modified("total_capital")}>
+        <Panel title="總資金" meta="依持股自動計算">
           <div className="panel-body">
-            <ActionForm action={saveCapital} submit="儲存">
-              <label className="field">
-                新台幣（元）
-                <input name="capital" type="number" min="1" step="1" defaultValue={Number(capital)} style={{ width: 180 }} required />
-              </label>
-            </ActionForm>
+            <p className="num" style={{ fontSize: 22, margin: "0 0 6px" }}>{money(Number(capital))} 元</p>
             <p className="small muted">
-              目前 {money(Number(capital))} 元。單筆最大虧損 {pct(pos.risk_per_trade, 1, false)}、單檔上限 {pct(pos.max_position_pct, 0, false)}、
+              目前持股成本合計（含手續費），登錄買賣後自動更新；持股全部賣出時沿用最後一次的金額。單筆最大虧損 {pct(pos.risk_per_trade, 1, false)}、單檔上限 {pct(pos.max_position_pct, 0, false)}、
               單一族群上限 {pct(pos.max_group_pct, 0, false)}、最多 {pos.max_holdings} 檔（config/risk.yaml）
             </p>
           </div>

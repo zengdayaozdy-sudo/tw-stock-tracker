@@ -321,7 +321,7 @@ export function registerTools(server: McpServer) {
       const [holdings, rows, capital, recent] = await Promise.all([
         q.holdingsDetail(date),
         q.trades(),
-        q.setting<number>("total_capital", 0),
+        q.totalCapital(),
         recent_trades ? q.tradesRecent(recent_trades) : Promise.resolve([]),
       ]);
       const trades: Trade[] = rows.map((r) => ({

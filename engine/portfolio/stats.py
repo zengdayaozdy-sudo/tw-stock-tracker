@@ -115,5 +115,5 @@ def portfolio_stats(repo, as_of: date) -> dict[str, Any]:
     start = min((t["date"] for t in trades), default=as_of)
     benchmarks = {k: repo.series(k, start - timedelta(days=10), as_of) for k in BENCHMARK_LABELS}
     benchmarks["etf_0050"] = adjust_points(benchmarks["etf_0050"], repo.adjustments(["0050"]).get("0050"))
-    capital = float(repo.setting("total_capital", 0) or 0)
+    capital = repo.total_capital()
     return trade_stats(trades, last_close, capital, as_of, benchmarks)

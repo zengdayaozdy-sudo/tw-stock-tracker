@@ -85,7 +85,7 @@ def run_signals(settings: Settings, repo: Repository, as_of: date, force: bool =
         selected[h] = select(totals, groups, top_percent, scoring)
     candidates = sorted(set().union(*(s.keys() for s in selected.values())))
 
-    capital = float(repo.setting("total_capital", 0) or 0)
+    capital = repo.total_capital()
     holdings = repo.holdings_value(as_of)
     stock_groups = _stock_groups(groups)
     exposures = group_exposures(holdings, stock_groups)

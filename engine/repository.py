@@ -377,6 +377,19 @@ class Repository:
             row = cur.fetchone()
             return row[0] if row else default
 
+    def total_capital(self) -> float:
+        """總資金＝目前持股成本合計（含手續費）。2026-11-12 擁有者決定不用預設值，以實際持股為準。
+
+        持股全部賣出時沿用最後一次算出的金額，建議張數才不會變成 0；每次算出新值會寫回 settings 供網站顯示修改時間。
+        """
+        with self.conn.cursor() as cur:
+            cur.execute("SELECT COALESCE(SUM(shares * avg_cost), 0) FROM holdings WHERE shares > 0")
+            cost = round(float(cur.fetchone()[0] or 0))
+        stored = round(float(self.setting("total_capital", 0) or 0))
+        if cost > 0 and cost != stored:
+            self.set_setting("total_capital", cost)
+        return float(cost or stored)
+
     def holdings_value(self, as_of: date) -> dict[str, float]:
         """目前持股市值（股數 × as_of 當天以前最後收盤，查無收盤時用成本）。"""
         with self.conn.cursor() as cur:

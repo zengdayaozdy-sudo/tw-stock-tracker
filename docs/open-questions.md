@@ -20,7 +20,7 @@
 | 14 | 法說會日期沒有證交所／櫃買 OpenAPI，公開資訊觀測站需表單查詢 | 先由網站手動登錄（第 9 階段），events.source = manual |
 | 15 | 財經新聞 RSS 來源（filters.yaml 的 rss_feeds）：需擁有者選擇條款允許自動讀取的來源；目前只用公開資訊觀測站重大訊息 | 待擁有者提供 |
 | 16 | 濾網門檻（燈號各輸入的區間、外資未平倉 ±口數、弱勢族群比例 30%）為初始值 | 第 10 階段回測後調整 |
-| 17 | 總資金目前使用資料庫預設 100 萬（settings.total_capital），影響建議張數 | 可用 `python -m engine.cli capital 金額` 或 GitHub Actions 手動操作 `capital` 設定；第 9 階段網站設定頁也可修改 |
+| 17 | 總資金來源 | 已決定（2026-11-12）：不用預設值，以目前持股成本合計（含手續費）為準，登錄買賣後自動更新；持股全部賣出時沿用最後一次的金額 |
 | 18 | 進場條件、價位與風控參數（risk.yaml）為初始值 | 第 10 階段回測後調整 |
 | 19 | LINE 官方帳號免費方案每月推播則數有上限，請在 LINE Official Account Manager 確認目前方案額度；每日報告通常 1 則、有警告時加 1 則 | 待擁有者確認；超過時可把 notify.yaml 的 max_messages_per_report 調小 |
 | 20 | 付費模式回測需包含已下市股票，但目前 stocks 沒有下市資料（FinMind 有 TaiwanStockDelisting，尚未實測是否免費） | 升級付費方案前補上；報告會標註倖存者偏差 |

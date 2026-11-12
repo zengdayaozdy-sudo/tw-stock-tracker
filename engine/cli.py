@@ -696,13 +696,12 @@ def cmd_capital(args) -> None:
     from engine.db import connect
     from engine.repository import Repository
 
-    repo = Repository(connect())
     if args.amount is not None:
-        if args.amount <= 0:
-            raise SystemExit("總資金必須大於 0")
-        repo.set_setting("total_capital", args.amount)
-        repo.conn.commit()
-    print(f"總資金：{float(repo.setting('total_capital', 0)):,.0f} 元")
+        raise SystemExit("總資金已改為依目前持股成本自動計算，不能手動設定；登錄買賣後會自動更新")
+    repo = Repository(connect())
+    capital = repo.total_capital()
+    repo.conn.commit()
+    print(f"總資金（目前持股成本合計）：{capital:,.0f} 元")
 
 
 def cmd_monitor(args) -> None:
@@ -944,7 +943,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--date")
     p.set_defaults(func=cmd_stats)
 
-    p = sub.add_parser("capital", help="查看或設定總資金（影響建議張數）")
+    p = sub.add_parser("capital", help="查看總資金（目前持股成本合計，影響建議張數）")
     p.add_argument("amount", nargs="?", type=float)
     p.set_defaults(func=cmd_capital)
 

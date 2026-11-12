@@ -87,7 +87,7 @@ Import 本 repo → Root Directory 設為 `web` → 環境變數：
 1. `migrate` → `companies` → `seed-groups`（或 GitHub Actions 手動操作執行 `companies`、`seed-groups`）
 2. 網站「自選股」或 `watch add 2330 2317 …` 加入自選股（免費模式上限 100 檔）
 3. 回補歷史：每日排程的 `backfill-new` 依本小時剩餘 FinMind 額度自動回補（每次最多 40 檔，上限在 `config/sources.yaml` 的 `backfill_new`）；想一次補完可手動 `backfill --years 5`
-4. 網站「設定」輸入總資金（影響建議張數）
+4. 登錄目前持股（網站「持股與交易」）：總資金依持股成本合計自動計算，影響建議張數
 5. 回測前：`backtest-data --years 5`
 
 ## 3. 環境變數一覽

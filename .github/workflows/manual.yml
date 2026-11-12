@@ -32,7 +32,7 @@ on:
           - backtest-holdout
           - setup-study
       args:
-        description: 參數（回測：--set risk.stop_loss.percent=0.06；自選股：2330 2317；買賣：2330 1050 1000 --date 2026-11-06（代號 價格 股數）；總資金：1500000）
+        description: 參數（回測：--set risk.stop_loss.percent=0.06；自選股：2330 2317；買賣：2330 1050 1000 --date 2026-11-06（代號 價格 股數））
         required: false
 
 jobs:
@@ -47,8 +47,8 @@ jobs:
       LINE_OWNER_USER_ID: ${{ secrets.LINE_OWNER_USER_ID }}
       TZ: Asia/Taipei
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - run: pip install -e ".[backtest]"

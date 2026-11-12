@@ -47,6 +47,13 @@ export async function setting<T>(key: string, fallback: T): Promise<T> {
   return rows.length ? (rows[0].value as T) : fallback;
 }
 
+/** 總資金＝目前持股成本合計（與 engine Repository.total_capital 相同規則）；沒有持股時沿用最後一次算出的金額。 */
+export async function totalCapital(): Promise<number> {
+  const [row] = await db()`SELECT COALESCE(SUM(shares * avg_cost), 0)::float8 AS cost FROM holdings WHERE shares > 0`;
+  const cost = Math.round(Number(row?.cost ?? 0));
+  return cost > 0 ? cost : Number(await setting<number>("total_capital", 0));
+}
+
 /** 設定值的最後修改時間。 */
 export async function settingsUpdated(keys: string[]): Promise<Record<string, Date>> {
   const rows = await db()`SELECT key, updated_at FROM settings WHERE key = ANY(${keys})`;

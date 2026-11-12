@@ -111,17 +111,6 @@ export async function updateHoldingLevels(_prev: ActionState, form: FormData): P
 
 // ---------- 設定 ----------
 
-export async function saveCapital(_prev: ActionState, form: FormData): Promise<ActionState> {
-  await requireSession();
-  const amount = Number(String(form.get("capital") ?? "").replaceAll(",", ""));
-  if (!(amount > 0) || amount > 1e11) return fail("請輸入合理的總資金");
-  await db()`
-    INSERT INTO settings (key, value, updated_at) VALUES ('total_capital', ${db().json(amount)}, now())
-    ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()`;
-  revalidatePath("/settings");
-  return ok(`總資金已設為 ${amount.toLocaleString("zh-TW")} 元，下一次訊號會依此計算建議張數`);
-}
-
 export async function saveNotify(_prev: ActionState, form: FormData): Promise<ActionState> {
   await requireSession();
   const value = {

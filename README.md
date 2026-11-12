@@ -50,7 +50,7 @@ python -m engine.cli alert        # 只檢查並推播系統警告（排程任�
 | GitHub Secrets：DATABASE_URL、FINMIND_TOKEN | 完成 |
 | 證交所／櫃買資料欄位 probe | 完成，2026-11-06 全市場實際抓取通過（約 1,980 檔，26 秒） |
 | 股票清單、產業族群、自訂族群 | 完成：1,990 家公司、35 個產業族群＋5 個自訂族群 |
-| LINE Messaging API（LINE_CHANNEL_ACCESS_TOKEN、LINE_OWNER_USER_ID） | 待擁有者設定（未設定時報告只輸出到排程記錄，不會推播）；設定方式：`gh secret set LINE_CHANNEL_ACCESS_TOKEN`、`gh secret set LINE_OWNER_USER_ID` |
+| LINE Messaging API（LINE_CHANNEL_ACCESS_TOKEN、LINE_OWNER_USER_ID） | 完成（2026-11-11 起每日報告與系統警告正常推播） |
 | Vercel 專案（root 設為 web/，環境變數 DATABASE_URL、SITE_PASSWORD、SESSION_SECRET） | 完成：https://tw-stock-tracker-beta.vercel.app ，函式在新加坡 sin1 執行（web/vercel.json），與資料庫同區 |
 | 自選股 | 擁有者自行加入；免費模式建議 30～50 檔、分 6～10 個族群且每族群至少 3 檔（同族群比較需 3 檔以上），每日排程依剩餘 FinMind 額度自動回補歷史（每次最多 40 檔） |
 
@@ -120,7 +120,7 @@ claude.ai：設定 → 連接器 → 新增自訂連接器 → 網址填 `https:
 ## 交易日誌（也可用指令登錄）
 
 ```bash
-python -m engine.cli capital 1500000                         # 設定總資金（影響建議張數）
+python -m engine.cli capital                                 # 查看總資金（目前持股成本合計，影響建議張數）
 python -m engine.cli trade buy 2330 1050 1000 --date 2026-11-06   # 代號 價格 股數（或 --lots 1）
 python -m engine.cli trade sell 2330 1100 1000                # 手續費、證交稅自動計算，可用 --fee/--tax 覆寫
 python -m engine.cli trade list                               # 交易紀錄與目前持股
@@ -164,7 +164,7 @@ python -m engine.cli monitor --once  # 先手動檢查一次確認設定正確
 
 - `watch-add` 參數填股票代號（空白分隔）加入自選股；`backfill` 回補自選股 3 年歷史
 - `companies` 更新公司資料與股數；`seed-groups` 依 config/groups.yaml 建立族群
-- `trade-buy`／`trade-sell` 參數填「代號 價格 股數」（可加 `--date YYYY-MM-DD`）；`trade-list`、`stats` 查看；`capital` 填總資金
+- `trade-buy`／`trade-sell` 參數填「代號 價格 股數」（可加 `--date YYYY-MM-DD`）；`trade-list`、`stats` 查看；`capital` 查看總資金（依持股成本自動計算）
 - 每日收盤後批次可指定日期補跑
 
 ## 交給 Claude Code 接手

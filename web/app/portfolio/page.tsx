@@ -3,7 +3,7 @@ import { ActionForm } from "@/components/ActionForm";
 import { Change, Panel, StockLink } from "@/components/ui";
 import { Updated } from "@/components/Updated";
 import { HORIZON_LABELS, money, num, pct, shortDate, timeTaipei, todayTaipei, tone } from "@/lib/format";
-import { dataUpdates, holdingsDetail, lastCloses, latestDate, names, priceAdjustments, seriesBetween, setting, settingsUpdated, signalsOn, trades as loadTrades } from "@/lib/queries";
+import { dataUpdates, holdingsDetail, lastCloses, latestDate, names, priceAdjustments, seriesBetween, signalsOn, totalCapital, trades as loadTrades } from "@/lib/queries";
 import { requireSession } from "@/lib/session";
 import { adjustPoints, tradeStats, type Trade } from "@/lib/trading";
 
@@ -13,13 +13,12 @@ export default async function PortfolioPage() {
   await requireSession();
   const today = todayTaipei();
   const date = (await latestDate()) ?? today;
-  const [holdings, rows, capital, sells, upd, setUpd] = await Promise.all([
+  const [holdings, rows, capital, sells, upd] = await Promise.all([
     holdingsDetail(date),
     loadTrades(),
-    setting<number>("total_capital", 0),
+    totalCapital(),
     signalsOn(date, "sell"),
     dataUpdates(),
-    settingsUpdated(["total_capital"]),
   ]);
   const trades: Trade[] = rows.map((r) => ({
     trade_id: Number(r.trade_id),
@@ -47,8 +46,7 @@ export default async function PortfolioPage() {
     <>
       <h1>持股與交易日誌</h1>
       <p className="sub">
-        總資金 {money(Number(capital))} 元
-        {setUpd.total_capital ? <span className="faint">（{timeTaipei(setUpd.total_capital)} 修改）</span> : null}
+        總資金 {money(Number(capital))} 元<span className="faint">（持股成本合計）</span>
         ｜持股市值 {money(value)} 元（{pct(capital ? value / Number(capital) : null, 1, false)}）
         <span className="sep">｜</span>
         現價為 {shortDate(date)} 收盤

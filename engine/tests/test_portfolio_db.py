@@ -112,3 +112,17 @@ def test_portfolio_stats(repo):
     assert st["portfolio_return"] == pytest.approx(0.04)
     assert st["benchmarks"]["taiex"] == pytest.approx(0.05)
     assert st["benchmarks"]["etf_0050"] is None    # 尚無 0050 資料
+
+
+def test_total_capital_follows_holdings_cost(repo):
+    # 沒有持股：沿用設定裡最後一次的金額（初始資料庫為 migration 的種子值）
+    stored = repo.total_capital()
+    record_trade(SETTINGS, repo, "2330", DAYS[0], "buy", 100, 2000, fee=0)
+    record_trade(SETTINGS, repo, "2317", DAYS[0], "buy", 200, 1000, fee=0)
+    assert repo.total_capital() == 400_000
+    assert float(repo.setting("total_capital")) == 400_000
+    # 全部賣出後沿用最後一次算出的金額，建議張數不會變成 0
+    record_trade(SETTINGS, repo, "2330", DAYS[5], "sell", 105, 2000, fee=0, tax=0)
+    record_trade(SETTINGS, repo, "2317", DAYS[5], "sell", 200, 1000, fee=0, tax=0)
+    assert repo.total_capital() == 400_000
+    assert stored != 400_000
