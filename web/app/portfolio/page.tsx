@@ -1,3 +1,4 @@
+import { Fragment } from "react";
 import { recordTrade, updateHoldingLevels } from "@/app/actions";
 import { ActionForm } from "@/components/ActionForm";
 import { Change, Panel, StockLink } from "@/components/ui";
@@ -6,6 +7,12 @@ import { HORIZON_LABELS, money, num, pct, shortDate, timeTaipei, todayTaipei, to
 import { dataUpdates, holdingsDetail, lastCloses, latestDate, names, priceAdjustments, seriesBetween, signalsOn, totalCapital, trades as loadTrades } from "@/lib/queries";
 import { requireSession } from "@/lib/session";
 import { adjustPoints, tradeStats, type Trade } from "@/lib/trading";
+
+// 賣出提醒拆成「類型」與「說明」：例如「跌破停損、分數跌出門檻：收盤 196 跌破停損…」
+function splitReason(reason: string): [string, string] {
+  const i = reason.indexOf("：");
+  return i < 0 ? [reason, ""] : [reason.slice(0, i), reason.slice(i + 1).replace(/；/g, "　")];
+}
 
 const BENCH: Record<string, string> = { taiex: "加權指數", etf_0050: "0050（含息）" };
 
@@ -115,36 +122,47 @@ export default async function PortfolioPage() {
                   <th className="n">損益</th>
                   <th className="n">報酬</th>
                   <th className="n">最高收盤</th>
-                  <th>開倉日</th>
                   <th>停損／停利</th>
-                  <th>最後更新</th>
-                  <th>提醒</th>
                 </tr>
               </thead>
               <tbody>
                 {holdings.map((h) => {
                   const pnl = h.close ? (h.close - h.avg_cost) * h.shares : null;
                   const sell = sells.find((s) => s.stock_id === h.stock_id);
+                  const [sellHead, sellDetail] = sell ? splitReason(sell.reason) : [null, null];
                   return (
-                    <tr key={h.stock_id}>
-                      <td><StockLink id={h.stock_id} name={h.name} /></td>
+                    <Fragment key={h.stock_id}>
+                    <tr className={sell ? "has-alert" : ""}>
+                      <td>
+                        <StockLink id={h.stock_id} name={h.name} />
+                        <div className="small faint">開倉 {shortDate(h.opened_date)}</div>
+                      </td>
                       <td className="n">{num(h.shares, 0)}</td>
                       <td className="n">{num(h.avg_cost, 2)}</td>
                       <td className="n">{num(h.close)}</td>
                       <td className={`n ${tone(pnl)}`}>{money(pnl)}</td>
                       <td className="n"><Change value={h.close ? h.close / h.avg_cost - 1 : null} /></td>
                       <td className="n">{num(h.highest_close)}</td>
-                      <td className="num small">{h.opened_date}</td>
                       <td>
                         <ActionForm action={updateHoldingLevels} submit="更新" className="inline nowrap">
                           <input type="hidden" name="stock_id" value={h.stock_id} />
                           <input name="stop_loss" type="number" step="0.01" defaultValue={h.stop_loss ?? ""} className="w-xs" aria-label="停損" placeholder="停損" />
                           <input name="take_profit" type="number" step="0.01" defaultValue={h.take_profit ?? ""} className="w-xs" aria-label="停利" placeholder="停利" />
                         </ActionForm>
+                        <div className="small faint num">{timeTaipei(h.updated_at)} 更新</div>
                       </td>
-                      <td className="num small faint">{timeTaipei(h.updated_at)}</td>
-                      <td className="wrap small">{sell ? <span className="up">{sell.reason}</span> : null}</td>
                     </tr>
+                    {sell && (
+                      <tr className="alert-row">
+                        <td colSpan={8}>
+                          <span className="alert-line">
+                            <span className="tag block">{sellHead}</span>
+                            <span className="alert-text">{sellDetail}</span>
+                          </span>
+                        </td>
+                      </tr>
+                    )}
+                    </Fragment>
                   );
                 })}
               </tbody>
