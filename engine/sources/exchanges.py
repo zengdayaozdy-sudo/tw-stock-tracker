@@ -521,7 +521,10 @@ class ExchangeClient:
         return out
 
     def taiex_month(self, month: date) -> list[dict]:
-        """發行量加權股價指數，一次一個月。"""
+        """發行量加權股價指數，一次一個月。
+
+        收盤寫入 series taiex；開盤、最高、最低另存 taiex_open／taiex_high／taiex_low（每日盤勢總結判斷盤型用）。
+        """
         payload = self.raw("twse", "taiex_history", date=month.strftime("%Y%m01"))
         if isinstance(payload, dict) and payload.get("stat") not in (None, "OK"):
             return []
@@ -529,8 +532,13 @@ class ExchangeClient:
         for r in _table(payload):
             d = parse_tw_date(_col(r, "日期"))
             close = to_number(_col(r, "收盤指數"))
-            if d and close:
-                out.append({"series": "taiex", "date": d, "value": close})
+            if not (d and close):
+                continue
+            out.append({"series": "taiex", "date": d, "value": close})
+            for series, label in (("taiex_open", "開盤指數"), ("taiex_high", "最高指數"), ("taiex_low", "最低指數")):
+                value = to_number(_col(r, label))
+                if value:
+                    out.append({"series": series, "date": d, "value": value})
         return out
 
 

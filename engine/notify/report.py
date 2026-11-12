@@ -57,6 +57,7 @@ def report_data(settings: Settings, repo: Repository, as_of: date) -> dict[str, 
         "blocked": (signal_job[1].get("blocked") if signal_job else None) or [],
         "setups": (signal_job[1].get("setups") if signal_job else None) or [],
         "holdings": repo.holdings_detail(as_of),
+        "summary": repo.daily_summary(as_of),
         "quality_ok": quality.get("ok"),
         "quality_warnings": len(quality.get("warnings") or []),
     }
@@ -244,7 +245,12 @@ def _footer(d: dict, site_url: str | None) -> str:
 
 
 def render_blocks(d: dict, compact: bool = False, max_blocked: int = 10, site_url: str | None = None) -> list[str]:
+    from engine.summary.render import plan_block, summary_block
+
     blocks = [_market_block(d)]
+    summary = d.get("summary")
+    if summary:
+        blocks.append(summary_block(summary, compact))
     groups = _groups_block(d)
     if groups:
         blocks.append(groups)
@@ -255,6 +261,8 @@ def render_blocks(d: dict, compact: bool = False, max_blocked: int = 10, site_ur
     holdings = _holdings_block(d)
     if holdings:
         blocks.append(holdings)
+    if summary and summary.get("plan"):
+        blocks.append(plan_block(summary["plan"], compact))
     blocks.append(_footer(d, site_url))
     return blocks
 

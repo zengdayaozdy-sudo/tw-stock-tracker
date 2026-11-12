@@ -13,7 +13,7 @@ from engine.repository import Repository
 STEP_LABELS = {
     "fetch": "資料抓取", "liquidity": "流動性過濾", "news": "消息面排雷", "score": "評分",
     "filters": "濾網", "signals": "買進訊號", "notify": "LINE 報告", "backfill": "歷史回補",
-    "holdings": "持股檢查", "holders": "股權分散表",
+    "holdings": "持股檢查", "holders": "股權分散表", "summary": "盤勢總結",
 }
 MONITOR_JOB = "monitor_heartbeat"
 MARKET_CLOSE = time(13, 30)

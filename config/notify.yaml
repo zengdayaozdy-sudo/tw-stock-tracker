@@ -24,3 +24,32 @@ intraday:                       # 盤中停損監控（第 8 階段，常駐在�
   error_backoff_seconds: [30, 60, 120, 300]   # 連線失敗時的重試間隔
   keep_awake: true              # macOS：交易時間內阻止系統閒置睡眠（caffeinate）
   schedule_check: "17:30"       # 交易日此時間檢查收盤後排程是否已開始（GitHub 排程停用或延遲時推播警告）
+
+daily_summary:                  # 每日盤勢總結與隔日操作計畫（engine/summary，2026-11-12 擁有者要求）
+  enabled: true
+  flat_gap: 0.001               # 開盤相對昨收在 ±0.1% 內視為平開
+  close_low_zone: 0.15          # 收在當日區間最低 15% 內＝收最低附近（尾盤賣壓）
+  close_high_zone: 0.15
+  ma_days: [5, 10, 20, 60]      # 關鍵均線
+  ma_touch_tolerance: 0.002     # 盤中高（低）點距均線 0.2% 內算碰到
+  run_days: 3                   # 「短線漲多」看今天以前幾個交易日的累計漲幅
+  run_threshold: 0.05           # 累計漲（跌）超過 5% 視為漲多（跌深）
+  limit_move: 0.095             # 漲跌幅 ≥ 9.5% 計為漲停／跌停
+  breadth_one_sided: 0.68       # 上漲（下跌）家數佔比超過此值視為普漲（普跌）
+  min_market_rows: 1500         # 全市場股票數低於此值不計算寬度與成交值（資料不完整）
+  volume_avg_days: 20           # 成交值與近 20 日平均比較
+  heavy_volume_ratio: 1.3       # 成交值 ≥ 20 日均量 1.3 倍＝爆量
+  light_volume_ratio: 0.75
+  flow_days: 30                 # 法人連續買賣超天數往回看幾天
+  flow_threshold_billion: 30    # 單日估算買賣超超過 30 億才列入原因
+  top_contributors: 5           # 權值股對指數的貢獻點數列出前幾名
+  overnight_threshold: 0.015    # 費半、台積電 ADR 前一交易日漲跌超過 1.5% 才列入原因
+  fx_threshold: 0.002           # 新台幣單日升貶超過 0.2% 才列入原因
+  group_min_members: 3          # 族群至少幾檔有報價才計算當日漲跌
+  top_groups: 3                 # 當日最強、最弱族群各列幾個
+  news_max: 6                   # 消息面最多列幾則盤勢、產業新聞
+  news_hours: 30                # 只取最近 30 小時的盤勢與產業新聞（含前一晚國際新聞）
+  plan_levels: 2                # 隔日計畫列出最近的壓力、支撐各幾個
+  stop_watch_pct: 0.03          # 持股現價距停損 3% 內列為「接近停損」
+  ai_narrative: true            # AI_PROVIDER 為 ollama／claude 時由 AI 改寫成一段敘述，失敗時用規則文字
+  narrative_max_chars: 320

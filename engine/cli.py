@@ -579,6 +579,40 @@ def cmd_notify(args) -> None:
         print("系統警告：" + "；".join(result["alerts"]))
 
 
+def cmd_summary(args) -> None:
+    """每日盤勢總結與隔日操作計畫（持股檢查之後、LINE 推播之前）。"""
+    from engine.db import connect
+    from engine.joblog import job_run
+    from engine.repository import Repository
+    from engine.summary.narrative import create_writer
+    from engine.summary.render import plan_block, summary_block
+    from engine.summary.runner import run_summary
+
+    settings = load_settings()
+    if not settings.notify.get("daily_summary", {}).get("enabled", True):
+        print("盤勢總結已在 config/notify.yaml 停用")
+        return
+    as_of = _parse_date(args.date)
+    conn = connect()
+    repo = Repository(conn)
+    writer = None if args.no_ai else create_writer(settings)
+    with job_run(conn, "summary", as_of) as run:
+        result = run_summary(settings, repo, as_of, writer)
+        run.note(status=result["status"], generated_by=result.get("generated_by"), ai_error=result.get("ai_error"),
+                 reasons=[r["key"] for r in result.get("reasons", [])])
+        if result["status"] != "ok":
+            run.skip(result["reason"])
+    if result["status"] != "ok":
+        print(f"未產生盤勢總結：{result['reason']}")
+        return
+    saved = repo.daily_summary(as_of)
+    print(summary_block(saved))
+    print("─" * 20)
+    print(plan_block(saved["plan"]))
+    if result.get("ai_error"):
+        print(f"注意：AI 改寫失敗，使用規則文字（{result['ai_error']}）")
+
+
 def cmd_alert(args) -> None:
     """只送系統警告（排程任一步驟失敗時呼叫）。"""
     from engine.db import connect
@@ -969,6 +1003,11 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--date")
     p.add_argument("--force", action="store_true", help="資料完整性檢查未通過時仍產生訊號（除錯用）")
     p.set_defaults(func=cmd_signals)
+
+    p = sub.add_parser("summary", help="每日盤勢總結與隔日操作計畫")
+    p.add_argument("--date")
+    p.add_argument("--no-ai", action="store_true", help="不用 AI 改寫，只用規則文字")
+    p.set_defaults(func=cmd_summary)
 
     p = sub.add_parser("notify", help="LINE 每日報告與系統警告")
     p.add_argument("--date")

@@ -678,6 +678,106 @@ class Repository:
                 f[d] = f.get(d, 1.0) * float(after) / float(before)
             return {sid: sorted(v.items()) for sid, v in out.items()}
 
+    # ---------- 每日盤勢總結 ----------
+    def previous_trade_date(self, as_of: date) -> date | None:
+        """as_of 之前最近一個有全市場行情的交易日（以加權指數序列為準，沒有時用股價表）。"""
+        with self.conn.cursor() as cur:
+            cur.execute("SELECT max(date) FROM market_series WHERE series = 'taiex' AND date < %s", (as_of,))
+            d = cur.fetchone()[0]
+            if d is None:
+                cur.execute("SELECT max(date) FROM daily_prices WHERE date < %s", (as_of,))
+                d = cur.fetchone()[0]
+            return d
+
+    def market_snapshot(self, as_of: date, prev: date) -> list[dict]:
+        """全市場當日與前一交易日收盤（寬度、權值股貢獻、族群漲跌用）。"""
+        with self.conn.cursor() as cur:
+            cur.execute(
+                "SELECT p.stock_id, s.name, s.market, s.shares, p.close, q.close, p.turnover "
+                "FROM daily_prices p JOIN stocks s USING (stock_id) "
+                "LEFT JOIN daily_prices q ON q.stock_id = p.stock_id AND q.date = %s "
+                "WHERE p.date = %s AND p.close IS NOT NULL",
+                (prev, as_of),
+            )
+            cols = ("stock_id", "name", "market", "shares", "close", "prev_close", "turnover")
+            return [{**dict(zip(cols, r, strict=True)), "close": _f(r[4]), "prev_close": _f(r[5]),
+                     "turnover": _f(r[6]), "shares": int(r[3]) if r[3] else None} for r in cur.fetchall()]
+
+    def turnover_totals(self, start: date, end: date, market: str = "twse") -> dict[date, tuple[float, int]]:
+        with self.conn.cursor() as cur:
+            cur.execute(
+                "SELECT p.date, sum(p.turnover), count(*) FROM daily_prices p JOIN stocks s USING (stock_id) "
+                "WHERE s.market = %s AND p.date BETWEEN %s AND %s GROUP BY p.date",
+                (market, start, end),
+            )
+            return {d: (float(v or 0), int(n)) for d, v, n in cur.fetchall()}
+
+    def flow_totals(self, start: date, end: date, market: str = "twse") -> dict[date, dict[str, float]]:
+        """三大法人買賣超金額（估算：股數 × 收盤價），只取當天有全市場法人資料的日期。"""
+        with self.conn.cursor() as cur:
+            cur.execute(
+                "SELECT c.date, sum(c.foreign_net * p.close), sum(c.trust_net * p.close), sum(c.dealer_net * p.close), "
+                "count(*) FILTER (WHERE c.foreign_net IS NOT NULL) "
+                "FROM chips c JOIN daily_prices p USING (stock_id, date) JOIN stocks s USING (stock_id) "
+                "WHERE s.market = %s AND c.date BETWEEN %s AND %s GROUP BY c.date",
+                (market, start, end),
+            )
+            rows = cur.fetchall()
+        if not rows:
+            return {}
+        full = max(n for *_x, n in rows)
+        return {d: {"foreign": float(f or 0), "trust": float(t or 0), "dealer": float(dl or 0), "count": n}
+                for d, f, t, dl, n in rows if n >= full * 0.8}
+
+    def foreign_top(self, as_of: date, n: int) -> dict[str, list[dict]]:
+        """當日外資買超、賣超金額（估算）前 n 名。"""
+        sql = ("SELECT c.stock_id, s.name, c.foreign_net * p.close AS v, c.foreign_net FROM chips c "
+               "JOIN daily_prices p USING (stock_id, date) JOIN stocks s USING (stock_id) "
+               "WHERE c.date = %s AND c.foreign_net IS NOT NULL ORDER BY v {} NULLS LAST LIMIT %s")
+        out: dict[str, list[dict]] = {}
+        with self.conn.cursor() as cur:
+            for key, order in (("buy", "DESC"), ("sell", "ASC")):
+                cur.execute(sql.format(order), (as_of, n))
+                out[key] = [{"stock_id": sid, "name": name, "value": round(float(v)), "shares": int(sh)}
+                            for sid, name, v, sh in cur.fetchall()
+                            if v is not None and ((float(v) > 0) == (key == "buy"))]
+        return out
+
+    def market_news(self, since: datetime, until: datetime, limit: int) -> list[dict]:
+        """盤勢與產業新聞（同一篇文章被多個主題收進來時只留一筆）。"""
+        with self.conn.cursor() as cur:
+            cur.execute(
+                "SELECT DISTINCT ON (title) title, source, url, published_at, scope, topic, is_major_negative, summary "
+                "FROM news WHERE scope IN ('market', 'group') AND published_at BETWEEN %s AND %s "
+                "ORDER BY title, published_at DESC",
+                (since, until),
+            )
+            cols = ("title", "source", "url", "published_at", "scope", "topic", "is_major_negative", "summary")
+            rows = [dict(zip(cols, r, strict=True)) for r in cur.fetchall()]
+        # 盤勢分類優先、再依時間新到舊
+        rows.sort(key=lambda r: (r["scope"] != "market", -r["published_at"].timestamp()))
+        return rows[:limit]
+
+    def save_summary(self, on_date: date, facts: dict, reasons: list, plan: dict, narrative: str,
+                     generated_by: str) -> None:
+        with self.conn.cursor() as cur:
+            cur.execute(
+                "INSERT INTO daily_summaries (date, facts, reasons, plan, narrative, generated_by, updated_at) "
+                "VALUES (%s, %s, %s, %s, %s, %s, now()) ON CONFLICT (date) DO UPDATE SET facts = EXCLUDED.facts, "
+                "reasons = EXCLUDED.reasons, plan = EXCLUDED.plan, narrative = EXCLUDED.narrative, "
+                "generated_by = EXCLUDED.generated_by, updated_at = now()",
+                (on_date, _adapt(facts), _adapt(reasons), _adapt(plan), narrative, generated_by),
+            )
+
+    def daily_summary(self, on_date: date) -> dict | None:
+        with self.conn.cursor() as cur:
+            cur.execute("SELECT facts, reasons, plan, narrative, generated_by, updated_at FROM daily_summaries "
+                        "WHERE date = %s", (on_date,))
+            row = cur.fetchone()
+        if not row:
+            return None
+        return dict(zip(("facts", "reasons", "plan", "narrative", "generated_by", "updated_at"), row, strict=True))
+
 
 def _f(x: Any) -> float | None:
     return None if x is None else float(x)

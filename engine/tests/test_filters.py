@@ -442,7 +442,13 @@ def test_taiex_month_parsing():
     payload = {"stat": "OK", "fields": ["日期", "開盤指數", "最高指數", "最低指數", "收盤指數"],
                "data": [["115/11/02", "45,034.53", "45,156.17", "44,399.10", "44,920.14"]]}
     ex = _exchange({"MI_5MINS_HIST": payload})
-    assert ex.taiex_month(date(2026, 11, 1)) == [{"series": "taiex", "date": date(2026, 11, 2), "value": 44920.14}]
+    d = date(2026, 11, 2)
+    assert ex.taiex_month(date(2026, 11, 1)) == [
+        {"series": "taiex", "date": d, "value": 44920.14},
+        {"series": "taiex_open", "date": d, "value": 45034.53},
+        {"series": "taiex_high", "date": d, "value": 45156.17},
+        {"series": "taiex_low", "date": d, "value": 44399.10},
+    ]
 
 
 def test_finmind_market_parsers():
