@@ -14,6 +14,20 @@ vi.mock("../queries", () => ({
   ]),
   lastCloses: vi.fn(async () => ({ "2330": 1085 })),
   names: vi.fn(async () => ({})),
+  summaryDates: vi.fn(async () => ["2026-11-12"]),
+  dailySummary: vi.fn(async (date: string) =>
+    date === "2026-11-12"
+      ? {
+          date,
+          narrative: "加權指數開低後盤中一度翻紅，終場跌 1,165 點。",
+          generated_by: "rules",
+          facts: { headline: "加權指數開低", index: { close: 43091.87, change: -1165.28 }, flows: { foreign: -6.8e8 } },
+          reasons: [{ key: "profit_taking", tone: "neg", text: "短線漲多", weight: 9 }],
+          plan: { posture: { tone: "bearish", title: "偏空", text: "不開新倉" }, holdings: [], entries: [] },
+          updated_at: new Date("2026-11-12T08:00:00Z"),
+        }
+      : null,
+  ),
 }));
 vi.mock("../mutations", async () => {
   const actual = await vi.importActual<typeof import("../mutations")>("../mutations");
@@ -96,7 +110,7 @@ describe("2026-07-28 無狀態協定", () => {
     const msg = await message(await serveMcp(rpc("tools/list"), TOKEN, "path"));
     const tools = msg.result.tools as { name: string; annotations?: Record<string, boolean> }[];
     const names = tools.map((t) => t.name);
-    for (const n of ["get_overview", "get_stock", "get_watchlist", "list_signals", "get_portfolio", "add_to_watchlist", "record_trade"])
+    for (const n of ["get_overview", "get_daily_summary", "get_stock", "get_watchlist", "list_signals", "get_portfolio", "add_to_watchlist", "record_trade"])
       expect(names).toContain(n);
     expect(tools.find((t) => t.name === "get_watchlist")?.annotations?.readOnlyHint).toBe(true);
     expect(tools.find((t) => t.name === "remove_from_watchlist")?.annotations?.destructiveHint).toBe(true);
@@ -109,6 +123,19 @@ describe("2026-07-28 無狀態協定", () => {
     const data = JSON.parse(msg.result.content[0].text);
     expect(data.count).toBe(1);
     expect(data.stocks[0]).toMatchObject({ stock_id: "2330", close: 1085, scores: { short: { total: 71.2 } } });
+  });
+
+  it("get_daily_summary 預設取最新一天，沒有總結的日期回報錯誤", async () => {
+    const msg = await message(await serveMcp(rpc("tools/call", { name: "get_daily_summary", arguments: {} }), TOKEN, "header"));
+    expect(msg.result.isError).toBeFalsy();
+    const data = JSON.parse(msg.result.content[0].text);
+    expect(data.date).toBe("2026-11-12");
+    expect(data.reasons).toEqual([{ tone: "neg", text: "短線漲多" }]);
+    expect(data.next_day_plan.posture.title).toBe("偏空");
+    const none = await message(
+      await serveMcp(rpc("tools/call", { name: "get_daily_summary", arguments: { date: "2026-11-11" } }), TOKEN, "header"),
+    );
+    expect(none.result.isError).toBe(true);
   });
 
   it("add_to_watchlist 代號轉大寫、去重後交給共用寫入邏輯", async () => {

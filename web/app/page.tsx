@@ -5,7 +5,7 @@ import { Icon } from "@/components/Icon";
 import { Updated } from "@/components/Updated";
 import { BuySignalTable, Change, Panel, StockLink } from "@/components/ui";
 import { LIGHT_LABELS, dateLabel, money, num, reboundEvidence, timeTaipei, tone } from "@/lib/format";
-import { dataUpdates, holdingsDetail, lastHeartbeat, latestDate, latestJob, market, signalsOn } from "@/lib/queries";
+import { dailySummary, dataUpdates, holdingsDetail, lastHeartbeat, latestDate, latestJob, market, signalsOn } from "@/lib/queries";
 import { requireSession } from "@/lib/session";
 import { goToStock } from "./actions";
 
@@ -94,7 +94,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
       </>
     );
 
-  const [m, buys, sells, holdings, fetchJob, signalJob, notifyJob, heartbeat, upd] = await Promise.all([
+  const [m, buys, sells, holdings, fetchJob, signalJob, notifyJob, heartbeat, upd, summary] = await Promise.all([
     market(date),
     signalsOn(date, "buy"),
     signalsOn(date, "sell"),
@@ -104,6 +104,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
     latestJob("notify", date),
     lastHeartbeat("monitor_heartbeat"),
     dataUpdates(),
+    dailySummary(date),
   ]);
   const ranked = (m?.groups ?? []).filter((g) => g.rank);
   const blocked: WatchItem[] = signalJob?.detail?.blocked ?? [];
@@ -167,6 +168,24 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
           </div>
         </div>
       </section>
+
+      {summary && (
+        <section
+          className={`lead lead-compact ${(summary.facts.index?.change ?? 0) < 0 ? "lead-down" : (summary.facts.index?.change ?? 0) > 0 ? "lead-up" : ""}`}
+          aria-label="今日盤勢總結"
+        >
+          <p>{summary.narrative}</p>
+          <div className="lead-foot">
+            <span className="posture-inline">
+              <span className="faint">隔日方針</span>
+              <strong className={summary.plan.posture.tone === "bearish" ? "down" : summary.plan.posture.tone === "bullish" ? "up" : ""}>
+                {summary.plan.posture.title}
+              </strong>
+            </span>
+            <Link href={`/summary?date=${date}`}>原因拆解與隔日操作計畫 ›</Link>
+          </div>
+        </section>
+      )}
 
       <div className="grid wide-left">
         <Panel icon="gauge" title="大盤燈號依據" meta={<Updated at={upd.filters} />}>

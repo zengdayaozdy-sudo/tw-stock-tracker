@@ -15,6 +15,7 @@ on:
           - fetch
           - score
           - filters
+          - summary
           - companies
           - seed-groups
           - watch-add
@@ -47,13 +48,17 @@ jobs:
       FINMIND_TOKEN: ${{ secrets.FINMIND_TOKEN }}
       LINE_CHANNEL_ACCESS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}
       LINE_OWNER_USER_ID: ${{ secrets.LINE_OWNER_USER_ID }}
+      AI_PROVIDER: ${{ vars.AI_PROVIDER || 'rules' }}
+      OLLAMA_BASE_URL: ${{ vars.OLLAMA_BASE_URL }}
+      OLLAMA_MODEL: ${{ vars.OLLAMA_MODEL }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
       TZ: Asia/Taipei
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
-      - run: pip install -e ".[backtest]"
+      - run: pip install -e ".[backtest,claude]"
       - name: 套用資料庫結構
         run: python -m engine.cli migrate
       - name: 執行
@@ -70,6 +75,8 @@ jobs:
             fetch)            python -m engine.cli fetch $ARGS ;;
             score)            python -m engine.cli score $ARGS ;;
             filters)          python -m engine.cli filters $ARGS ;;
+            # 補產生盤勢總結：先重算濾網（同時補抓加權指數開高低），再產生總結；不推播 LINE
+            summary)          python -m engine.cli filters $ARGS && python -m engine.cli summary $ARGS ;;
             watch-add)    python -m engine.cli watch add $ARGS ;;
             watch-remove) python -m engine.cli watch remove $ARGS ;;
             watch-list)   python -m engine.cli watch list ;;

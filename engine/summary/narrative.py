@@ -21,16 +21,18 @@ class WriterError(RuntimeError):
     pass
 
 
-def rule_narrative(headline: str | None, reasons: list[dict], posture: dict | None, max_reasons: int = 4) -> str:
+def rule_narrative(headline: str | None, reasons: list[dict], posture: dict | None, max_reasons: int = 3,
+                   news: list[dict] | None = None) -> str:
+    """規則版：走勢一句、前三個原因、一則新聞標題、隔日方針。完整條列在原因拆解，這裡只留重點。"""
     if not headline:
         return "今日加權指數資料尚未更新，無法產生盤勢總結"
     picked = [r["text"] for r in reasons if r["key"] != "news"][:max_reasons]
-    news = next((r["text"] for r in reasons if r["key"] == "news"), None)
     parts = [headline + "。"]
     if picked:
         parts.append("主要原因：" + "；".join(picked) + "。")
-    if news:
-        parts.append(news + "。")
+    lead = next((n for n in news or [] if n.get("is_major_negative")), (news or [None])[0])
+    if lead:
+        parts.append(f"新聞焦點：「{lead['title']}」（{lead['source']}）。")
     if posture:
         parts.append(f"隔日方針：{posture['title']}，{posture['text']}。")
     return "".join(parts)
@@ -143,7 +145,7 @@ def clean(text: str, max_chars: int) -> str:
 def write_narrative(writer, headline: str | None, reasons: list[dict], news: list[dict], posture: dict | None,
                     cfg: dict) -> tuple[str, str, str | None]:
     """回傳（敘述, generated_by, AI 錯誤訊息）。"""
-    fallback = rule_narrative(headline, reasons, posture)
+    fallback = rule_narrative(headline, reasons, posture, news=news)
     if writer is None or not headline or not cfg.get("ai_narrative", True):
         return fallback, "rules", None
     system, user = build_prompt(headline, reasons, news, posture, cfg["narrative_max_chars"])

@@ -19,6 +19,11 @@ SELL_ACTIONS = {
 }
 
 
+def _at(verb: str, label: str) -> str:
+    """「跌破 10 日線」「跌破今日低點」：中文接數字時空一格。"""
+    return f"{verb} {label}" if label[:1].isdigit() else f"{verb}{label}"
+
+
 def _num(x: float | None) -> str:
     if x is None:
         return "—"
@@ -82,14 +87,14 @@ def scenarios(levels: dict[str, list[dict]], pos: dict[str, str], has_entries: b
         r = res[0]
         act = ("反彈延續，但燈號仍偏空：只看觀察名單是否站上轉強價，不追價" if bearish
                else "多方延續，可依買進訊號在區間內分批" if has_entries else "多方延續，等新訊號，不追價")
-        out.append({"case": "強", "when": f"站上{r['label']} {_num(r['value'])}", "action": act})
+        out.append({"case": "強", "when": f"{_at('站上', r['label'])} {_num(r['value'])}", "action": act})
     if res and sup:
         out.append({"case": "盤整", "when": f"在 {_num(sup[0]['value'])}～{_num(res[0]['value'])} 之間",
                     "action": "區間整理，不追高、不殺低，持股照停損價執行"})
     if sup:
         s = sup[0]
         nxt = f"，下一個支撐 {sup[1]['label']} {_num(sup[1]['value'])}" if len(sup) > 1 else ""
-        out.append({"case": "弱", "when": f"跌破{s['label']} {_num(s['value'])}",
+        out.append({"case": "弱", "when": f"{_at('跌破', s['label'])} {_num(s['value'])}",
                     "action": f"弱勢延續{nxt}；持股跌破停損即出場，不攤平、不搶反彈"})
     return out
 
@@ -188,7 +193,7 @@ def build_plan(f: dict[str, Any], ctx: dict[str, Any], cfg: dict) -> dict[str, A
         watch.append(f"外資是否結束連續{'賣' if fl['foreign'] < 0 else '買'}超（目前 {fl['foreign_streak']} 日）")
     if levels["support"]:
         s = levels["support"][0]
-        watch.append(f"開盤 30 分鐘能否守住{s['label']} {_num(s['value'])}")
+        watch.append(f"開盤 30 分鐘能否{_at('守住', s['label'])} {_num(s['value'])}")
     return {
         "posture": pos,
         "levels": levels,

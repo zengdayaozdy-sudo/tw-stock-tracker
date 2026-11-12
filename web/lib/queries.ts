@@ -430,3 +430,99 @@ export async function tradesRecent(limit = 30) {
     SELECT trade_id, stock_id, date, side, price, shares, fee, tax, note
     FROM trades ORDER BY date DESC, trade_id DESC LIMIT ${limit}`;
 }
+
+// ---------- 每日盤勢總結與隔日操作計畫（engine/summary，資料表 daily_summaries） ----------
+
+export type SummaryReason = { key: string; text: string; tone: "neg" | "pos" | "info"; weight: number };
+export type Level = { label: string; value: number; distance: number; pct: number };
+export type HoldingAction = {
+  stock_id: string;
+  name: string | null;
+  close: number | null;
+  gain: number | null;
+  stop_loss: number | null;
+  shares: number | null;
+  level: "sell" | "watch" | "hold";
+  action: string;
+  reason?: string;
+  stop_distance?: number;
+};
+export type EntryCandidate = {
+  kind: "buy" | "setup" | "watch";
+  stock_id: string;
+  name: string | null;
+  action: string;
+  entry_low?: number | null;
+  entry_high?: number | null;
+  stop_loss?: number | null;
+  take_profit?: number | null;
+  trigger_price?: number | null;
+  lots?: number;
+  blocked_by?: string[];
+};
+export type SummaryPlan = {
+  posture: { tone: "bullish" | "neutral" | "bearish"; title: string; text: string };
+  levels: { resistance: Level[]; support: Level[] };
+  scenarios: { case: string; when: string; action: string }[];
+  holdings: HoldingAction[];
+  entries: EntryCandidate[];
+  events: string[];
+  watch: string[];
+};
+type SeriesChange = { value: number; prev: number; change: number; pct: number | null; date: string };
+type Mover = { stock_id: string; name: string | null; points: number; pct: number };
+export type SummaryFacts = {
+  date: string;
+  headline?: string;
+  index: {
+    close: number; prev_close: number; change: number; pct: number; prev_date: string;
+    open?: number; high?: number; low?: number; gap_pct?: number; range?: number; range_pct?: number;
+    close_location?: number; pattern: string; pattern_label: string; intraday_flip?: string; close_zone?: string;
+  } | null;
+  ma?: { days: number; value: number; above: boolean; gap: number; crossed?: string; touched?: string }[];
+  prior_run?: { days: number; pct: number; points: number } | null;
+  breadth?: { advancers: number; decliners: number; unchanged: number; limit_up: number; limit_down: number; total: number } | null;
+  turnover?: { value: number; avg: number | null; ratio: number | null; avg_days: number } | null;
+  flows?: { foreign: number; trust: number; dealer: number; total: number; foreign_streak: number; trust_streak: number; dealer_streak: number } | null;
+  foreign_top?: { buy: { stock_id: string; name: string; value: number }[]; sell: { stock_id: string; name: string; value: number }[] };
+  contributors?: { estimated_change: number; drags: Mover[]; boosts: Mover[] } | null;
+  groups?: { strong: { name: string; pct: number }[]; weak: { name: string; pct: number }[]; count: number };
+  overnight?: { sox?: SeriesChange; tsm_adr?: SeriesChange; usd_twd?: SeriesChange; foreign_tx_oi?: SeriesChange };
+  news?: { title: string; source: string; url: string | null; scope: string; topic: string | null; published_at: string; is_major_negative: boolean }[];
+};
+export type DailySummary = {
+  date: string;
+  facts: SummaryFacts;
+  reasons: SummaryReason[];
+  plan: SummaryPlan;
+  narrative: string | null;
+  generated_by: string | null;
+  updated_at: Date;
+};
+
+/** 網站比排程先部署：daily_summaries 由下一次排程的 migrate 建立，建立前查詢視為沒有資料。 */
+function missingTable(e: unknown): boolean {
+  return (e as { code?: string })?.code === "42P01";
+}
+
+export async function dailySummary(date: string): Promise<DailySummary | null> {
+  try {
+    const rows = await db()`
+      SELECT date, facts, reasons, plan, narrative, generated_by, updated_at FROM daily_summaries WHERE date = ${date}`;
+    return rows.length ? (rows[0] as unknown as DailySummary) : null;
+  } catch (e) {
+    if (missingTable(e)) return null;
+    throw e;
+  }
+}
+
+/** 有總結的日期（新到舊），頁面上一日／下一日切換用。 */
+export async function summaryDates(limit = 60): Promise<string[]> {
+  try {
+    const rows = await db()`SELECT date FROM daily_summaries ORDER BY date DESC LIMIT ${limit}`;
+    return rows.map((r) => r.date as string);
+  } catch (e) {
+    if (missingTable(e)) return [];
+    throw e;
+  }
+}

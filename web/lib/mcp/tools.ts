@@ -132,6 +132,42 @@ export function registerTools(server: McpServer) {
   );
 
   server.registerTool(
+    "get_daily_summary",
+    {
+      title: "盤後總結與隔日操作計畫",
+      description:
+        "取得指定交易日的盤勢總結與隔日操作計畫：加權指數盤型（開高走低、盤中翻紅後收黑等）、依影響程度排序的漲跌原因（短線漲多、均線壓力、權值股貢獻點數、漲跌家數、法人估算與外資連續天數、成交值、費半與台積電 ADR、匯率、族群輪動、盤勢新聞），以及隔日方針、關鍵壓力支撐、強／盤整／弱三情境、每檔持股的隔日做法、進場名單與事件提醒。想知道「今天為什麼漲／跌」「明天怎麼操作」時呼叫這個。",
+      inputSchema: z.object({ date: DATE.optional() }),
+      annotations: READ,
+    },
+    async ({ date }) => {
+      const d = date ?? (await q.summaryDates(1))[0] ?? (await q.latestDate());
+      if (!d) return errorText(NO_DATA);
+      const s = await q.dailySummary(d);
+      if (!s) return errorText(`${d} 還沒有盤勢總結（每日收盤後排程的「盤勢總結與隔日操作計畫」步驟產生）`);
+      return json({
+        date: d,
+        narrative: s.narrative,
+        generated_by: s.generated_by,
+        headline: s.facts.headline,
+        index: s.facts.index,
+        reasons: s.reasons.map((r) => ({ tone: r.tone, text: r.text })),
+        breadth: s.facts.breadth,
+        turnover: s.facts.turnover,
+        flows_estimated: s.facts.flows,
+        foreign_top: s.facts.foreign_top,
+        contributors_estimated: s.facts.contributors,
+        groups_today: s.facts.groups,
+        overnight: s.facts.overnight,
+        news: s.facts.news,
+        next_day_plan: s.plan,
+        updated_at: s.updated_at,
+        note: "法人金額與權值股貢獻點數以收盤價估算；僅供參考，買賣由使用者自行判斷",
+      });
+    },
+  );
+
+  server.registerTool(
     "search_stocks",
     {
       title: "搜尋股票",

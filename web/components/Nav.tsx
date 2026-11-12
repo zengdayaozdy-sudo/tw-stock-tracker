@@ -8,6 +8,7 @@ const useIsoLayoutEffect = typeof window === "undefined" ? useEffect : useLayout
 
 const LINKS = [
   { href: "/", label: "總覽", icon: "overview" },
+  { href: "/summary", label: "盤後總結", short: "總結", icon: "summary" },
   { href: "/watchlist", label: "自選股", icon: "watch" },
   { href: "/groups", label: "族群", icon: "groups" },
   { href: "/portfolio", label: "持股與交易", short: "持股", icon: "portfolio" },

@@ -22,6 +22,7 @@ python -m engine.cli score        # 三面向評分
 python -m engine.cli filters      # 大盤燈號、族群強弱、事件行事曆
 python -m engine.cli signals      # 買進訊號、參考價位、建議張數（資料不完整時暫停）
 python -m engine.cli holdings     # 持股檢查：停損、移動停利回落、分數跌出門檻、持有過久
+python -m engine.cli summary      # 盤勢總結與隔日操作計畫（--no-ai 只用規則文字）
 python -m engine.cli notify       # LINE 每日報告＋系統警告（同一天只送一次，--resend 重送）
 python -m engine.cli alert        # 只檢查並推播系統警告（排程任一步驟失敗時自動執行）
 ```
@@ -40,6 +41,7 @@ python -m engine.cli alert        # 只檢查並推播系統警告（排程任�
 - [x] 10. 回測（backtrader，調參／保留驗證區間）
 - [x] 11. 排程與維運文件（[docs/runbook.md](docs/runbook.md)）
 - [x] 12. 大盤反彈偵測與反彈單（2026-11-11，[docs/rebound-research.md](docs/rebound-research.md)）
+- [x] 13. 每日盤勢總結與隔日操作計畫（2026-11-12，CLAUDE.md 9.1 節）
 
 ## 已完成的前置設定
 
@@ -60,7 +62,8 @@ Next.js 16（App Router）＋TypeScript，部署在 Vercel，單一密碼登入�
 
 | 頁面 | 內容 |
 |---|---|
-| 總覽 `/` | 大盤燈號與各輸入依據、今日買進訊號、族群強弱、持股與賣出提醒、系統狀態 |
+| 總覽 `/` | 盤勢總結摘要、大盤燈號與各輸入依據、今日買進訊號、族群強弱、持股與賣出提醒、系統狀態 |
+| 盤後總結 `/summary` | 今天為什麼這樣走（原因依影響排序）、盤中區間與均線、法人、權值股貢獻點數、族群與外部變數、新聞，以及隔日方針、壓力支撐、三情境、持股處理、進場名單 |
 | 族群 `/groups` | 族群排名（相對大盤報酬、平均分數、弱勢）與成分股排行 |
 | 個股 `/stocks/代號` | K 線＋均線＋成交量＋訊號標記、評分拆解、參考價位、排雷紀錄、事件（可登錄法說會）、財報狗與 Goodinfo 連結 |
 | 自選股 `/watchlist` | 新增／移除自選股（下一次排程自動回補歷史）、維護自訂族群 |
@@ -102,6 +105,7 @@ claude.ai：設定 → 連接器 → 新增自訂連接器 → 網址填 `https:
 | 工具 | 用途 |
 |---|---|
 | `get_overview` | 當日大盤燈號、族群強弱、買進訊號、賣出提醒、持股、系統狀態 |
+| `get_daily_summary` | 盤勢總結（漲跌原因）與隔日操作計畫 |
 | `search_stocks` | 以代號或名稱搜尋股票 |
 | `get_stock` | 個股評分拆解、訊號與參考價位、排雷紀錄、事件、近期股價 |
 | `get_price_history` | 日 K 歷史 |
@@ -166,6 +170,7 @@ python -m engine.cli monitor --once  # 先手動檢查一次確認設定正確
 - `companies` 更新公司資料與股數；`seed-groups` 依 config/groups.yaml 建立族群
 - `trade-buy`／`trade-sell` 參數填「代號 價格 股數」（可加 `--date YYYY-MM-DD`）；`trade-list`、`stats` 查看；`capital` 查看總資金（依持股成本自動計算）
 - 每日收盤後批次可指定日期補跑
+- `summary` 參數填 `--date YYYY-MM-DD` 補產生某天的盤勢總結（先重算濾網補抓加權指數開高低，不推播 LINE）
 
 ## 交給 Claude Code 接手
 
