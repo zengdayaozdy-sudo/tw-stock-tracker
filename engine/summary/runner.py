@@ -72,14 +72,21 @@ def collect_facts(settings: Settings, repo: Repository, as_of: date) -> dict[str
     series = {k: F.to_series(repo.series(k, start, as_of)) for k in ("sox", "tsm_adr", "usd_twd", "foreign_tx_oi")}
     out["overnight"] = F.overnight(series, as_of)
 
+    # 盤前、盤中與收盤報導是今天漲跌的原因；晚間消息（美股盤中、國際事件）發生在收盤後，放到隔日計畫的觀察重點。
+    # 兩段分開查：晚間新聞量大時（例如 11/12 黃仁勳辭職）不會把白天的新聞擠掉
     until = datetime.combine(as_of, time(23, 59, 59), tzinfo=TZ)
-    news = repo.market_news(until - timedelta(hours=cfg["news_hours"]), until, cfg["news_max"] * 4)
-    items = [{"title": n["title"], "source": n["source"], "url": n["url"], "scope": n["scope"],
-              "topic": n["topic"], "published_at": n["published_at"].isoformat(),
-              "is_major_negative": bool(n["is_major_negative"]), "summary": n["summary"]} for n in news]
-    # 盤前、盤中與收盤報導是今天漲跌的原因；晚間消息（美股盤中、國際事件）發生在收盤後，放到隔日計畫的觀察重點
-    pre, post = F.split_news(items, as_of, cfg["news_cutoff"])
-    out["news"], out["news_after_close"] = pre[: cfg["news_max"]], post[: cfg["news_max"]]
+    hh, mm = (int(x) for x in cfg["news_cutoff"].split(":"))
+    cutoff = datetime.combine(as_of, time(hh, mm), tzinfo=TZ)
+    since = until - timedelta(hours=cfg["news_hours"])
+
+    def pack(rows: list[dict]) -> list[dict]:
+        return [{"title": n["title"], "source": n["source"], "url": n["url"], "scope": n["scope"],
+                 "topic": n["topic"], "published_at": n["published_at"].isoformat(),
+                 "is_major_negative": bool(n["is_major_negative"]), "summary": n["summary"]} for n in rows]
+
+    out["news"], _ = F.split_news(pack(repo.market_news(since, cutoff, cfg["news_max"])), as_of, cfg["news_cutoff"])
+    _, out["news_after_close"] = F.split_news(
+        pack(repo.market_news(cutoff + timedelta(seconds=1), until, cfg["news_max"])), as_of, cfg["news_cutoff"])
     return _jsonable(out)
 
 

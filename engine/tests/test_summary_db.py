@@ -136,6 +136,17 @@ def test_run_summary_saves_facts_reasons_plan(settings, repo):
     assert repo.daily_summary(AS_OF)["generated_by"] == "rules"
 
 
+def test_evening_news_flood_does_not_hide_daytime_news(settings, repo):
+    repo.insert_news([{"stock_id": None, "scope": "market", "topic": "台股動態", "source": "Yahoo股市",
+                       "title": f"晚間新聞 {i}", "url": None, "dedup_key": f"flood{i}",
+                       "published_at": datetime(2026, 11, 12, 20, 0, tzinfo=TZ) + timedelta(minutes=i)} for i in range(40)])
+    repo.conn.commit()
+    run_summary(settings, repo, AS_OF, None)
+    f = repo.daily_summary(AS_OF)["facts"]
+    assert [n["title"] for n in f["news"]] == ["台股2大原因收盤慘跌1165點"]
+    assert len(f["news_after_close"]) == settings.notify["daily_summary"]["news_max"]
+
+
 def test_summary_falls_back_to_estimated_flows(settings, repo, conn):
     with conn.cursor() as cur:
         cur.execute("DELETE FROM market_series WHERE series LIKE 'inst_%'")
