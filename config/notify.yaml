@@ -52,6 +52,10 @@ daily_summary:                  # 每日盤勢總結與隔日操作計畫（engi
   top_groups: 3                 # 當日最強、最弱族群各列幾個
   news_max: 6                   # 消息面最多列幾則盤勢、產業新聞
   news_hours: 30                # 只取最近 30 小時的盤勢與產業新聞（含前一晚國際新聞）
+  news_candidates: 60           # 每段（今日／晚間）先取最近幾則，再依關鍵字排序挑 news_max 則
+  news_priority:                # 標題關鍵字加分：先挑盤勢總結型報導，再挑提到主要變數的；同分取較新的
+    - {weight: 3, words: [台股, 加權, 大盤, 集中市場, 收盤, 終場, 盤勢, 早盤, 尾盤]}
+    - {weight: 1, words: [外資, 法人, 投信, 新台幣, 台積電, 費半, 半導體, 輝達, 升息, 聯準會, 降息, 美股]}
   plan_levels: 2                # 隔日計畫列出最近的壓力、支撐各幾個
   stop_watch_pct: 0.03          # 持股現價距停損 3% 內列為「接近停損」
   ai_narrative: true            # AI_PROVIDER 為 ollama／claude 時由 AI 改寫成一段敘述，失敗時用規則文字

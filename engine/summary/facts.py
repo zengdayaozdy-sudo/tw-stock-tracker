@@ -207,6 +207,21 @@ def split_news(news: list[dict], as_of: date, cutoff_hhmm: str) -> tuple[list[di
     return pre, post
 
 
+def rank_news(news: list[dict], cfg: dict, limit: int) -> list[dict]:
+    """依標題關鍵字排序（盤勢總結型報導優先），同分取較新的；每個關鍵字組只算一次。"""
+    def score(n: dict) -> int:
+        return sum(g["weight"] for g in cfg.get("news_priority") or [] if any(w in n["title"] for w in g["words"]))
+
+    ranked = sorted(news, key=lambda n: (-score(n), -datetime_ts(n["published_at"])))
+    return [{**n, "relevance": score(n)} for n in ranked[:limit]]
+
+
+def datetime_ts(iso: str) -> float:
+    from datetime import datetime
+
+    return datetime.fromisoformat(iso).timestamp()
+
+
 def contributors(rows: list[dict], prev_index: float, cfg: dict) -> dict[str, Any] | None:
     """上市股票對加權指數的貢獻點數（估算）：前一日指數 ×（股數 × 漲跌金額）÷ 前一日總市值。"""
     valid = [r for r in rows if r.get("market") == "twse" and r.get("shares") and r.get("close") and r.get("prev_close")]

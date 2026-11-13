@@ -84,9 +84,10 @@ def collect_facts(settings: Settings, repo: Repository, as_of: date) -> dict[str
                  "topic": n["topic"], "published_at": n["published_at"].isoformat(),
                  "is_major_negative": bool(n["is_major_negative"]), "summary": n["summary"]} for n in rows]
 
-    out["news"], _ = F.split_news(pack(repo.market_news(since, cutoff, cfg["news_max"])), as_of, cfg["news_cutoff"])
-    _, out["news_after_close"] = F.split_news(
-        pack(repo.market_news(cutoff + timedelta(seconds=1), until, cfg["news_max"])), as_of, cfg["news_cutoff"])
+    n_cand, n_max = cfg["news_candidates"], cfg["news_max"]
+    pre, _ = F.split_news(pack(repo.market_news(since, cutoff, n_cand)), as_of, cfg["news_cutoff"])
+    _, post = F.split_news(pack(repo.market_news(cutoff + timedelta(seconds=1), until, n_cand)), as_of, cfg["news_cutoff"])
+    out["news"], out["news_after_close"] = F.rank_news(pre, cfg, n_max), F.rank_news(post, cfg, n_max)
     return _jsonable(out)
 
 

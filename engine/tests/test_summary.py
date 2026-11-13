@@ -177,6 +177,18 @@ def test_split_news_by_cutoff():
     assert [n["title"] for n in post] == ["黃仁勳確定下台"] and post[0]["phase"] == "post"
 
 
+def test_rank_news_prefers_market_wraps():
+    news = [{"title": "原物料報價一動股價就跟著動", "published_at": "2026-11-12T16:50:00+08:00"},
+            {"title": "限空令成效如何？金管會回應", "published_at": "2026-11-12T16:40:00+08:00"},
+            {"title": "美升息疑慮再起 30年期房貸利率急彈", "published_at": "2026-11-12T12:09:00+08:00"},
+            {"title": "今日台股》台股尾盤賣壓湧現！終場下跌1165元", "published_at": "2026-11-12T14:01:00+08:00"},
+            {"title": "輝達董事會將決定黃仁勳去留＋PCB載板賣壓出，台股翻黑重挫2.63%",
+             "published_at": "2026-11-12T14:30:00+08:00"}]
+    top = F.rank_news(news, CFG, 3)
+    assert [n["title"][:6] for n in top] == ["輝達董事會將", "今日台股》台", "美升息疑慮再"]
+    assert [n["relevance"] for n in top] == [4, 3, 1]
+
+
 def test_turnover_series_official():
     s = _closes([8.0e11] * 20 + [1.0133e12])
     t = F.turnover_series(s, AS_OF, CFG)
