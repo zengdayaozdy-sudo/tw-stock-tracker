@@ -451,6 +451,25 @@ def test_taiex_month_parsing():
     ]
 
 
+def test_market_turnover_and_institutional_amount_parsing():
+    # 2026-11-13 實測欄位：FMTQIK（每日市場成交資訊）、BFI82U（三大法人買賣金額統計表）
+    turnover = {"stat": "OK", "fields": ["日期", "成交股數", "成交金額", "成交筆數", "發行量加權股價指數", "漲跌點數"],
+                "data": [["115/11/12", "13,624,025,071", "1,013,293,000,000", "5,191,586", "43,091.87", "-1,165.28"]]}
+    amount = {"stat": "OK", "fields": ["單位名稱", "買進金額", "賣出金額", "買賣差額"], "data": [
+        ["自營商(自行買賣)", "1", "1", "-2,980,767,002"], ["自營商(避險)", "1", "1", "-3,560,201,288"],
+        ["投信", "1", "1", "12,385,430,000"], ["外資及陸資(不含外資自營商)", "1", "1", "-684,503,883"],
+        ["外資自營商", "0", "0", "0"], ["合計", "1", "1", "5,159,000,000"]]}
+    ex = _exchange({"FMTQIK": turnover, "BFI82U": amount})
+    d = date(2026, 11, 12)
+    assert ex.market_turnover_month(date(2026, 11, 1)) == [{"series": "twse_turnover", "date": d, "value": 1013293000000}]
+    assert ex.institutional_amount(d) == [
+        {"series": "inst_foreign", "date": d, "value": -684503883},
+        {"series": "inst_trust", "date": d, "value": 12385430000},
+        {"series": "inst_dealer", "date": d, "value": -2980767002 - 3560201288},
+    ]
+    assert _exchange({"BFI82U": {"stat": "很抱歉，沒有符合條件的資料!"}}).institutional_amount(d) == []
+
+
 def test_finmind_market_parsers():
     us = fm.parse_us_close([{"date": "2026-11-06", "stock_id": "^SOX", "Close": 9390.25}], "sox")
     assert us == [{"series": "sox", "date": date(2026, 11, 6), "value": 9390.25}]

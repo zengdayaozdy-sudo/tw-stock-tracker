@@ -330,7 +330,7 @@ export default async function SummaryPage({ searchParams }: { searchParams: Prom
             <div className="kpi-sub">{b ? `漲停 ${b.limit_up}｜跌停 ${b.limit_down}｜平盤 ${b.unchanged}` : "資料不足"}</div>
           </div>
           <div className="kpi">
-            <div className="kpi-label">上市成交值</div>
+            <div className="kpi-label">{t?.source === "stocks" ? "上市普通股成交值" : "上市成交值"}</div>
             <div className="kpi-value num">
               {t ? num(t.value / 1e8, 0) : "—"}
               <small> 億</small>
@@ -372,7 +372,7 @@ export default async function SummaryPage({ searchParams }: { searchParams: Prom
 
       <div className="gap" />
       <div className="grid three">
-        <Panel title="法人" icon="coins" meta="上市，以收盤價估算">
+        <Panel title="法人" icon="coins" meta={fl?.source === "estimated" ? "上市，以收盤價估算" : "上市，證交所公布"}>
           {fl ? (
             <>
               <dl className="kv panel-body">
@@ -394,11 +394,11 @@ export default async function SummaryPage({ searchParams }: { searchParams: Prom
               {f.foreign_top && (f.foreign_top.buy.length > 0 || f.foreign_top.sell.length > 0) && (
                 <div className="split">
                   <div>
-                    <h3 className="split-head">外資買超</h3>
+                    <h3 className="split-head">外資買超（個股估算）</h3>
                     <Movers items={f.foreign_top.buy} unit="yi" />
                   </div>
                   <div>
-                    <h3 className="split-head">外資賣超</h3>
+                    <h3 className="split-head">外資賣超（個股估算）</h3>
                     <Movers items={f.foreign_top.sell} unit="yi" />
                   </div>
                 </div>
@@ -484,35 +484,45 @@ export default async function SummaryPage({ searchParams }: { searchParams: Prom
         </Panel>
       </div>
 
-      {(f.news?.length ?? 0) > 0 && (
+      {((f.news?.length ?? 0) > 0 || (f.news_after_close?.length ?? 0) > 0) && (
         <>
           <div className="gap" />
           <Panel title="盤勢與產業新聞" icon="bell" meta="Yahoo股市 RSS，依原出處標示">
-            <ul className="news">
-              {f.news!.map((n) => (
-                <li key={n.title}>
-                  {n.url ? (
-                    <a href={n.url} target="_blank" rel="noreferrer">
-                      {n.title}
-                    </a>
-                  ) : (
-                    n.title
-                  )}
-                  {n.is_major_negative && <span className="tag block">利空</span>}
-                  <div className="small faint">
-                    {n.source}
-                    <span className="sep">｜</span>
-                    {timeTaipei(n.published_at)}
-                    {n.topic && (
-                      <>
-                        <span className="sep">｜</span>
-                        {n.topic}
-                      </>
-                    )}
-                  </div>
-                </li>
+            {[
+              { key: "today", head: "今日（盤前、盤中、收盤報導）", items: f.news ?? [] },
+              { key: "evening", head: "晚間消息（收盤後發生，列入隔日觀察）", items: f.news_after_close ?? [] },
+            ]
+              .filter((g) => g.items.length > 0)
+              .map((g) => (
+                <div key={g.key}>
+                  <h3 className="split-head">{g.head}</h3>
+                  <ul className="news">
+                    {g.items.map((n) => (
+                      <li key={n.title}>
+                        {n.url ? (
+                          <a href={n.url} target="_blank" rel="noreferrer">
+                            {n.title}
+                          </a>
+                        ) : (
+                          n.title
+                        )}
+                        {n.is_major_negative && <span className="tag block">利空</span>}
+                        <div className="small faint">
+                          {n.source}
+                          <span className="sep">｜</span>
+                          {timeTaipei(n.published_at)}
+                          {n.topic && (
+                            <>
+                              <span className="sep">｜</span>
+                              {n.topic}
+                            </>
+                          )}
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
               ))}
-            </ul>
           </Panel>
         </>
       )}
@@ -521,7 +531,7 @@ export default async function SummaryPage({ searchParams }: { searchParams: Prom
       <Plan s={s} />
 
       <p className="faint small" style={{ marginTop: 16 }}>
-        法人金額與權值股貢獻點數以收盤價估算，與交易所公布值會有些微差距｜僅供參考，買賣請自行判斷
+        權值股貢獻點數與個股外資買賣超以收盤價估算，與交易所公布值會有些微差距｜僅供參考，買賣請自行判斷
       </p>
     </>
   );

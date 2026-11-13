@@ -61,6 +61,15 @@ class FakeExchange:
 
     def __init__(self, taiex_drift=0.002):
         self.taiex_drift = taiex_drift
+        self.amount_days: list[date] = []
+
+    def market_turnover_month(self, month):
+        return [{"series": "twse_turnover", "date": AS_OF, "value": 1.0e12}] if month <= AS_OF else []
+
+    def institutional_amount(self, d):
+        self.amount_days.append(d)
+        return [{"series": k, "date": d, "value": v} for k, v in
+                (("inst_foreign", -6.8e8), ("inst_trust", 1.2e10), ("inst_dealer", -6.5e9))]
 
     def announcements(self):
         t = datetime(2026, 11, 6, 17, 30, tzinfo=TZ)
@@ -150,9 +159,16 @@ def test_news_step_with_rule_fallback(repo):
 def test_filters_step_bullish(repo):
     settings = load_settings("free")
     run_liquidity(settings, repo, AS_OF)
-    result = run_filters(settings, repo, FakeExchange(), FakeFinMind(), AS_OF)
+    ex = FakeExchange()
+    result = run_filters(settings, repo, ex, FakeFinMind(), AS_OF)
     assert result["warnings"] == []
     assert result["light"] == "bullish"
+    # 盤勢總結用的集中市場成交金額與三大法人金額：逐日補缺，再跑一次不重抓
+    assert repo.series("twse_turnover", AS_OF, AS_OF) == [(AS_OF, 1.0e12)]
+    assert AS_OF in ex.amount_days and repo.series("inst_foreign", AS_OF, AS_OF) == [(AS_OF, -6.8e8)]
+    ex2 = FakeExchange()
+    run_filters(settings, repo, ex2, FakeFinMind(), AS_OF)
+    assert ex2.amount_days == []
     assert result["weak_groups"] == ["航運業", "水泥工業"]  # 4 個族群 × 30% → 後 2 名
 
     with repo.conn.cursor() as cur:

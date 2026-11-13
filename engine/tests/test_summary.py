@@ -132,7 +132,8 @@ def _facts() -> dict:
             {"stock_id": "2330", "name": "台積電", "points": -520.0, "pct": -0.023},
             {"stock_id": "2308", "name": "台達電", "points": -60.0, "pct": -0.0425},
             {"stock_id": "2454", "name": "聯發科", "points": -55.0, "pct": -0.0351}], "boosts": []},
-        "flows": {"foreign": -6.845e8, "trust": 1.2385e10, "dealer": -6.54e9, "total": 5.16e9, "foreign_streak": 11},
+        "flows": {"foreign": -6.845e8, "trust": 1.2385e10, "dealer": -6.54e9, "total": 5.16e9, "foreign_streak": 11,
+                  "source": "twse"},
         "turnover": {"value": 1.0133e12, "avg": 7.5e11, "ratio": 1.351, "avg_days": 20},
         "overnight": {"sox": {"pct": 0.031, "change": 320, "value": 10564, "prev": 10244, "date": "2026-11-11"},
                       "usd_twd": {"value": 32.889, "prev": 32.86, "change": 0.029, "pct": 0.00088, "date": "2026-11-12"}},
@@ -155,6 +156,32 @@ def test_reasons_nov12_ranked():
     assert "爆量下跌" in texts["volume"]
     assert "fx" not in keys  # 0.09% 未達門檻
     assert texts["news"].startswith("消息面：「台股2大原因收盤慘跌1165點」")
+
+
+def test_reasons_mark_estimates():
+    f = _facts()
+    f["flows"] = {**f["flows"], "source": "estimated"}
+    f["turnover"] = {**f["turnover"], "source": "stocks"}
+    texts = {r["key"]: r["text"] for r in build_reasons(f, CFG)}
+    assert texts["foreign"].startswith("外資今日賣超約 6.8 億元（估算）")
+    assert texts["volume"].startswith("上市普通股成交值 10,133 億元")
+    assert "（估算）" not in {r["key"]: r["text"] for r in build_reasons(_facts(), CFG)}["foreign"]
+
+
+def test_split_news_by_cutoff():
+    news = [{"title": "盤前", "published_at": "2026-11-12T08:39:00+08:00"},
+            {"title": "收盤報導", "published_at": "2026-11-12T16:09:00+08:00"},
+            {"title": "黃仁勳確定下台", "published_at": "2026-11-12T22:40:00+08:00"}]
+    pre, post = F.split_news(news, AS_OF, "17:00")
+    assert [n["title"] for n in pre] == ["盤前", "收盤報導"]
+    assert [n["title"] for n in post] == ["黃仁勳確定下台"] and post[0]["phase"] == "post"
+
+
+def test_turnover_series_official():
+    s = _closes([8.0e11] * 20 + [1.0133e12])
+    t = F.turnover_series(s, AS_OF, CFG)
+    assert t["source"] == "twse" and t["ratio"] == pytest.approx(1.2666, abs=1e-3) and t["avg_days"] == 20
+    assert F.turnover_series(_closes([1.0, 2.0], end=AS_OF - timedelta(days=1)), AS_OF, CFG) is None
 
 
 def test_reasons_up_day_mirror():
@@ -221,13 +248,15 @@ def test_plan_and_render():
     assert [e["kind"] for e in plan["entries"]] == ["setup", "watch"]
     assert plan["events"] == ["2313 華通：月營收 11/10（2 天後）"]
     assert any("連續賣超（目前 11 日）" in w for w in plan["watch"])
+    f2 = {**f, "news_after_close": [{"title": "黃仁勳確定下台", "source": "Yahoo股市", "is_major_negative": False}]}
+    assert "晚間消息：「黃仁勳確定下台」（Yahoo股市）" in build_plan(f2, ctx, CFG)["watch"]
 
     reasons = build_reasons(f, CFG)
     narrative = rule_narrative(f["headline"], reasons, plan["posture"])
     s = {"facts": f, "reasons": reasons, "narrative": narrative}
     text = summary_block(s)
     assert text.startswith("【盤勢總結】\n加權指數開低")
-    assert "法人（上市估算）：外資 -6.8 億（連 11 賣）" in text
+    assert "法人（上市）：外資 -6.8 億（連 11 賣）" in text
     p = plan_block(plan)
     assert "方針：偏空、反彈嘗試尚未確認" in p
     assert "・2313 華通 196（-13.8%）：已跌破停損，明日依紀律出場，不攤平" in p

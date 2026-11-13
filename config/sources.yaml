@@ -57,6 +57,10 @@ twse:
     attention: https://openapi.twse.com.tw/v1/announcement/notice
     institutional: https://www.twse.com.tw/rwd/zh/fund/T86?date={date}&selectType=ALLBUT0999&response=json
     taiex_history: https://www.twse.com.tw/rwd/zh/TAIEX/MI_5MINS_HIST?date={date}&response=json
+    # 2026-11-13 實測：每日市場成交資訊（一次一個月），「成交金額」為集中市場全部（含 ETF），盤勢總結用
+    market_turnover: https://www.twse.com.tw/rwd/zh/afterTrading/FMTQIK?date={date}&response=json
+    # 2026-11-13 實測：三大法人買賣金額統計表（單日），「買賣差額」為新台幣元；外資＝外資及陸資(不含外資自營商)＋外資自營商
+    institutional_amount: https://www.twse.com.tw/rwd/zh/fund/BFI82U?type=day&dayDate={date}&response=json
     # 2026-11-09 實測：信用額度總量管制餘額表，當天更新；「當日餘額」欄為借券賣出餘額
     sbl_site: https://www.twse.com.tw/rwd/zh/marginTrading/TWT93U?date={date}&response=json
     # 2026-11-11 實測：融資融券彙總（全部），晚間公布當天資料；表格「今日餘額」第一個是融資、第二個是融券

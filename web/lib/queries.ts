@@ -482,13 +482,21 @@ export type SummaryFacts = {
   ma?: { days: number; value: number; above: boolean; gap: number; crossed?: string; touched?: string }[];
   prior_run?: { days: number; pct: number; points: number } | null;
   breadth?: { advancers: number; decliners: number; unchanged: number; limit_up: number; limit_down: number; total: number } | null;
-  turnover?: { value: number; avg: number | null; ratio: number | null; avg_days: number } | null;
-  flows?: { foreign: number; trust: number; dealer: number; total: number; foreign_streak: number; trust_streak: number; dealer_streak: number } | null;
+  turnover?: { value: number; avg: number | null; ratio: number | null; avg_days: number; source?: "twse" | "stocks" } | null;
+  flows?: {
+    foreign: number; trust: number; dealer: number; total: number;
+    foreign_streak: number; trust_streak: number; dealer_streak: number; source?: "twse" | "estimated";
+  } | null;
   foreign_top?: { buy: { stock_id: string; name: string; value: number }[]; sell: { stock_id: string; name: string; value: number }[] };
   contributors?: { estimated_change: number; drags: Mover[]; boosts: Mover[] } | null;
   groups?: { strong: { name: string; pct: number }[]; weak: { name: string; pct: number }[]; count: number };
   overnight?: { sox?: SeriesChange; tsm_adr?: SeriesChange; usd_twd?: SeriesChange; foreign_tx_oi?: SeriesChange };
-  news?: { title: string; source: string; url: string | null; scope: string; topic: string | null; published_at: string; is_major_negative: boolean }[];
+  news?: SummaryNews[];
+  news_after_close?: SummaryNews[];
+};
+type SummaryNews = {
+  title: string; source: string; url: string | null; scope: string; topic: string | null;
+  published_at: string; is_major_negative: boolean;
 };
 export type DailySummary = {
   date: string;

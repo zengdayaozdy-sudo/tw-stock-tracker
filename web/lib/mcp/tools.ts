@@ -154,15 +154,16 @@ export function registerTools(server: McpServer) {
         reasons: s.reasons.map((r) => ({ tone: r.tone, text: r.text })),
         breadth: s.facts.breadth,
         turnover: s.facts.turnover,
-        flows_estimated: s.facts.flows,
+        flows: s.facts.flows,
         foreign_top: s.facts.foreign_top,
         contributors_estimated: s.facts.contributors,
         groups_today: s.facts.groups,
         overnight: s.facts.overnight,
         news: s.facts.news,
+        news_after_close: s.facts.news_after_close,
         next_day_plan: s.plan,
         updated_at: s.updated_at,
-        note: "法人金額與權值股貢獻點數以收盤價估算；僅供參考，買賣由使用者自行判斷",
+        note: "flows.source＝twse 為證交所公布值、estimated 為估算；權值股貢獻點數與外資個股排行為估算；news 是今天的消息，news_after_close 是晚間消息（隔日觀察）；僅供參考，買賣由使用者自行判斷",
       });
     },
   );

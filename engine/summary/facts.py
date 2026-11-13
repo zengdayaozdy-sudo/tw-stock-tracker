@@ -177,6 +177,36 @@ def turnover(totals: dict[date, tuple[float, int]], as_of: date, cfg: dict) -> d
     return {"value": today, "avg": avg, "ratio": round(today / avg, 3) if avg else None, "avg_days": len(past)}
 
 
+def turnover_series(s: pd.Series, as_of: date, cfg: dict) -> dict[str, Any] | None:
+    """集中市場成交金額（證交所公布，含 ETF）與近 N 日平均比較。"""
+    t = _upto(s, as_of)
+    if t.empty or t.index[-1] != pd.Timestamp(as_of):
+        return None
+    today = float(t.iloc[-1])
+    past = t.iloc[:-1].iloc[-cfg["volume_avg_days"]:]
+    avg = float(past.mean()) if len(past) else None
+    return {"value": today, "avg": avg, "ratio": round(today / avg, 3) if avg else None, "avg_days": len(past),
+            "source": "twse"}
+
+
+def split_news(news: list[dict], as_of: date, cutoff_hhmm: str) -> tuple[list[dict], list[dict]]:
+    """依截止時間分成今天的消息（盤前、盤中、收盤報導＝今天漲跌的原因）與晚間消息（隔日觀察）。
+
+    published_at 為含時區 ISO 字串。截止時間不用 13:30：收盤報導多在 13:30–16:30 發出，講的仍是今天。
+    """
+    from datetime import datetime, time
+
+    from engine.config import TZ
+
+    hh, mm = (int(x) for x in cutoff_hhmm.split(":"))
+    cutoff = datetime.combine(as_of, time(hh, mm), tzinfo=TZ)
+    pre, post = [], []
+    for n in news:
+        ts = datetime.fromisoformat(n["published_at"])
+        (pre if ts <= cutoff else post).append({**n, "phase": "pre" if ts <= cutoff else "post"})
+    return pre, post
+
+
 def contributors(rows: list[dict], prev_index: float, cfg: dict) -> dict[str, Any] | None:
     """上市股票對加權指數的貢獻點數（估算）：前一日指數 ×（股數 × 漲跌金額）÷ 前一日總市值。"""
     valid = [r for r in rows if r.get("market") == "twse" and r.get("shares") and r.get("close") and r.get("prev_close")]

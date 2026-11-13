@@ -198,6 +198,28 @@ def refresh_market_series(settings: Settings, repo: Repository, exchange, finmin
     except Exception as e:
         errors.append(f"加權指數抓取失敗：{e}")
 
+    # 盤勢總結用：集中市場成交金額（一次一個月）與三大法人買賣金額（逐日，只補缺的交易日）
+    try:
+        start = start_for("twse_turnover")
+        month = start.replace(day=1)
+        rows = []
+        while month <= as_of:
+            rows += [r for r in exchange.market_turnover_month(month) if r["date"] <= as_of]
+            month = (month + timedelta(days=32)).replace(day=1)
+        counts["twse_turnover"] = repo.upsert("market_series", rows)
+    except Exception as e:
+        errors.append(f"集中市場成交金額抓取失敗：{e}")
+    try:
+        days = settings.notify.get("daily_summary", {}).get("flow_backfill_days", 45)
+        have = {d for d, _v in repo.series("inst_foreign", as_of - timedelta(days=days), as_of)}
+        trade_days = [d for d, _v in repo.series("taiex", as_of - timedelta(days=days), as_of) if d not in have]
+        rows = []
+        for d in trade_days:
+            rows += exchange.institutional_amount(d)
+        counts["inst_amount"] = repo.upsert("market_series", rows) if rows else 0
+    except Exception as e:
+        errors.append(f"三大法人買賣金額抓取失敗：{e}")
+
     for series, dataset, data_id, parse in FINMIND_SERIES:
         try:
             rows = parse(finmind.fetch(dataset, data_id, start_for(series), as_of))

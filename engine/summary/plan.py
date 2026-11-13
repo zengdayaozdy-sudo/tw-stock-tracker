@@ -191,6 +191,10 @@ def build_plan(f: dict[str, Any], ctx: dict[str, Any], cfg: dict) -> dict[str, A
     if (f.get("flows") or {}).get("foreign_streak", 0) >= 3:
         fl = f["flows"]
         watch.append(f"外資是否結束連續{'賣' if fl['foreign'] < 0 else '買'}超（目前 {fl['foreign_streak']} 日）")
+    after = f.get("news_after_close") or []
+    if after:
+        top = sorted(after, key=lambda n: not n.get("is_major_negative"))[:2]
+        watch.append("晚間消息：" + "；".join(f"「{n['title']}」（{n['source']}）" for n in top))
     if levels["support"]:
         s = levels["support"][0]
         watch.append(f"開盤 30 分鐘能否{_at('守住', s['label'])} {_num(s['value'])}")

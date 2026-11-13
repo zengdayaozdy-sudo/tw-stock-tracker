@@ -29,12 +29,14 @@ def summary_block(s: dict[str, Any], compact: bool = False) -> str:
     t = f.get("turnover")
     if t:
         ratio = f"（{t['avg_days']} 日均量 {t['ratio']:.2f} 倍）" if t.get("ratio") else ""
-        data.append(f"上市成交值 {t['value'] / 1e8:,.0f} 億{ratio}")
+        label = "上市普通股成交值" if t.get("source") == "stocks" else "上市成交值"
+        data.append(f"{label} {t['value'] / 1e8:,.0f} 億{ratio}")
     fl = f.get("flows")
     if fl:
         streak = fl.get("foreign_streak", 0)
         side = "賣" if fl["foreign"] < 0 else "買"
-        data.append(f"法人（上市估算）：外資 {_yi(fl['foreign'])}" + (f"（連 {streak} {side}）" if streak >= 2 else "")
+        src = "上市估算" if fl.get("source") == "estimated" else "上市"
+        data.append(f"法人（{src}）：外資 {_yi(fl['foreign'])}" + (f"（連 {streak} {side}）" if streak >= 2 else "")
                     + f"、投信 {_yi(fl['trust'])}、自營 {_yi(fl['dealer'])}")
     if data:
         lines.append("")

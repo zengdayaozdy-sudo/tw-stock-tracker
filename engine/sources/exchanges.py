@@ -185,6 +185,43 @@ class ExchangeClient:
         return out
 
     # ---------- 三大法人 ----------
+    def market_turnover_month(self, month: date) -> list[dict]:
+        """集中市場每日成交金額（含 ETF），一次一個月，寫入 series twse_turnover。"""
+        payload = self.raw("twse", "market_turnover", date=month.strftime("%Y%m01"))
+        if isinstance(payload, dict) and payload.get("stat") not in (None, "OK"):
+            return []
+        out = []
+        for r in _table(payload):
+            d = parse_tw_date(_col(r, "日期"))
+            value = to_number(_col(r, "成交金額"))
+            if d and value:
+                out.append({"series": "twse_turnover", "date": d, "value": value})
+        return out
+
+    def institutional_amount(self, trade_date: date) -> list[dict]:
+        """上市三大法人買賣差額（元，證交所公布值）：寫入 series inst_foreign／inst_trust／inst_dealer。
+
+        外資＝外資及陸資(不含外資自營商)＋外資自營商；自營商＝自行買賣＋避險。查無資料（休市、尚未公布）回傳空清單。
+        """
+        payload = self.raw("twse", "institutional_amount", date=trade_date.strftime("%Y%m%d"))
+        if isinstance(payload, dict) and payload.get("stat") not in (None, "OK"):
+            return []
+        sums = {"inst_foreign": 0.0, "inst_trust": 0.0, "inst_dealer": 0.0}
+        seen = set()
+        for r in _table(payload):
+            name = str(_col(r, "單位名稱") or "")
+            value = to_number(_col(r, "買賣差額"))
+            if value is None or "合計" in name:
+                continue
+            key = next((k for word, k in (("外資", "inst_foreign"), ("投信", "inst_trust"), ("自營商", "inst_dealer"))
+                        if word in name), None)
+            if key:
+                sums[key] += value
+                seen.add(key)
+        if seen != set(sums):
+            return []
+        return [{"series": k, "date": trade_date, "value": v} for k, v in sums.items()]
+
     def institutional(self, trade_date: date) -> list[dict]:
         out: list[dict] = []
         payload = self.raw("twse", "institutional", date=trade_date.strftime("%Y%m%d"))

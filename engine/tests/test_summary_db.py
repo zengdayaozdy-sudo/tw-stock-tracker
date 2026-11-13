@@ -54,6 +54,10 @@ def repo(conn):
              {"series": "sox", "date": PREV, "value": 10564.11},
              {"series": "sox", "date": PREV - timedelta(days=1), "value": 10244.0},
              {"series": "usd_twd", "date": AS_OF, "value": 32.889}, {"series": "usd_twd", "date": PREV, "value": 32.86}]
+    # 證交所三大法人買賣金額（BFI82U）：只有今天，比估算優先
+    rows += [{"series": "inst_foreign", "date": AS_OF, "value": -684503883},
+             {"series": "inst_trust", "date": AS_OF, "value": 12385430000},
+             {"series": "inst_dealer", "date": AS_OF, "value": -6540968290}]
     r.upsert("market_series", rows)
     prices = []
     for sid, prev, close, turnover in (("2330", 2395, 2340, 6.0e11), ("2308", 1295, 1240, 1.0e11),
@@ -76,6 +80,9 @@ def repo(conn):
                     "title": "台股2大原因收盤慘跌1165點", "url": "https://example.com/a", "dedup_key": "a",
                     "published_at": datetime(2026, 11, 12, 13, 35, tzinfo=TZ)},
                    {"stock_id": None, "scope": "market", "topic": "台股動態", "source": "Yahoo股市",
+                    "title": "黃仁勳確定下台！輝達開盤急殺", "url": "https://example.com/c", "dedup_key": "c",
+                    "published_at": datetime(2026, 11, 12, 22, 40, tzinfo=TZ)},
+                   {"stock_id": None, "scope": "market", "topic": "台股動態", "source": "Yahoo股市",
                     "title": "上週的舊聞", "url": "https://example.com/b", "dedup_key": "b",
                     "published_at": datetime(2026, 11, 5, 9, 0, tzinfo=TZ)}])
     r.save_holding({"stock_id": "2308", "shares": 1000, "avg_cost": 1300, "opened_date": date(2026, 10, 15),
@@ -95,7 +102,7 @@ class _Writer:
     name = "claude"
 
     def write(self, system, user):
-        assert "台股2大原因收盤慘跌1165點" in user and "上週的舊聞" not in user
+        assert "台股2大原因收盤慘跌1165點" in user and "上週的舊聞" not in user and "黃仁勳" not in user
         return "台股今天開低走低。"
 
 
@@ -106,10 +113,10 @@ def test_run_summary_saves_facts_reasons_plan(settings, repo):
     f = saved["facts"]
     assert f["index"]["intraday_flip"] == "翻紅後收黑"
     assert f["breadth"]["advancers"] == 1 and f["breadth"]["decliners"] == 3
-    # 法人估算只算上市：外資 −392 萬股 × 2,340 + 100 萬股 × 90.5
-    assert f["flows"]["foreign"] == pytest.approx(-3_920_000 * 2340 + 1_000_000 * 90.5)
-    # 前兩天只有台積電一檔有法人資料（不到全市場筆數的 8 成），不列入連續天數
-    assert f["flows"]["foreign_streak"] == 1
+    # 有證交所公布的三大法人金額時用公布值
+    assert f["flows"]["source"] == "twse" and f["flows"]["foreign"] == -684503883
+    assert f["turnover"]["source"] == "stocks" and f["turnover"]["ratio"] is None  # 比較基準只有 1 天
+    assert [n["title"] for n in f["news_after_close"]] == ["黃仁勳確定下台！輝達開盤急殺"]
     assert f["foreign_top"]["sell"][0]["stock_id"] == "2330"
     assert f["contributors"]["drags"][0]["stock_id"] == "2330"
     assert [n["title"] for n in f["news"]] == ["台股2大原因收盤慘跌1165點"]
@@ -120,11 +127,26 @@ def test_run_summary_saves_facts_reasons_plan(settings, repo):
     assert plan["posture"]["title"] == "偏空、反彈嘗試尚未確認"
     assert plan["holdings"][0]["action"].startswith("已跌破停損")
     assert plan["entries"][0]["kind"] == "setup"
+    assert any(w.startswith("晚間消息：「黃仁勳確定下台") for w in plan["watch"])
+    assert "黃仁勳" not in next(r["text"] for r in saved["reasons"] if r["key"] == "news")
     assert saved["narrative"] == "台股今天開低走低。"
 
     # 重跑覆寫，不會重複
     run_summary(settings, repo, AS_OF, None)
     assert repo.daily_summary(AS_OF)["generated_by"] == "rules"
+
+
+def test_summary_falls_back_to_estimated_flows(settings, repo, conn):
+    with conn.cursor() as cur:
+        cur.execute("DELETE FROM market_series WHERE series LIKE 'inst_%'")
+    conn.commit()
+    run_summary(settings, repo, AS_OF, None)
+    f = repo.daily_summary(AS_OF)["facts"]
+    # 法人估算只算上市：外資 −392 萬股 × 2,340 + 100 萬股 × 90.5
+    assert f["flows"]["source"] == "estimated"
+    assert f["flows"]["foreign"] == pytest.approx(-3_920_000 * 2340 + 1_000_000 * 90.5)
+    # 前兩天只有台積電一檔有法人資料（不到全市場筆數的 8 成），不列入連續天數
+    assert f["flows"]["foreign_streak"] == 1
 
 
 def test_summary_waits_for_index(settings, repo):

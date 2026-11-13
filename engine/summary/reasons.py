@@ -83,31 +83,34 @@ def build_reasons(f: dict[str, Any], cfg: dict) -> list[dict[str, Any]]:
     # 5. 法人（上市，估算）
     fl = f.get("flows")
     if fl:
+        est = "（估算）" if fl.get("source") == "estimated" else ""
         th_v = cfg["flow_threshold_billion"] * 1e8
         fv, streak = fl["foreign"], fl.get("foreign_streak", 0)
         side = "賣超" if fv < 0 else "買超"
         if abs(fv) >= th_v:
             more = f"，連續 {streak} 日{side}" if streak >= 3 else ""
-            out.append(_reason("foreign", f"外資{side}約 {_yi(fv)}{more}", "neg" if fv < 0 else "pos", 7.5))
+            out.append(_reason("foreign", f"外資{side}約 {_yi(fv)}{est}{more}", "neg" if fv < 0 else "pos", 7.5))
         elif streak >= 5:
-            out.append(_reason("foreign", f"外資今日{side}約 {_yi(fv)}，金額不大，但已連續 {streak} 日{side}",
+            out.append(_reason("foreign", f"外資今日{side}約 {_yi(fv)}{est}，金額不大，但已連續 {streak} 日{side}",
                                "neg" if fv < 0 else "pos", 5))
         for k, label in (("trust", "投信"), ("dealer", "自營商")):
             v = fl[k]
             if abs(v) >= th_v:
-                out.append(_reason(k, f"{label}{'賣超' if v < 0 else '買超'}約 {_yi(v)}", "neg" if v < 0 else "pos", 4.5))
+                side_k = "賣超" if v < 0 else "買超"
+                out.append(_reason(k, f"{label}{side_k}約 {_yi(v)}{est}", "neg" if v < 0 else "pos", 4.5))
         total = fl["total"]
         if down and total > 0:
-            out.append(_reason("flows_divergence", f"三大法人合計買超約 {_yi(total)}，指數下跌的賣壓主要不是來自法人",
+            out.append(_reason("flows_divergence", f"三大法人合計買超約 {_yi(total)}{est}，指數下跌的賣壓主要不是來自法人",
                                "info", 6.5))
         elif up and total < 0:
-            out.append(_reason("flows_divergence", f"三大法人合計賣超約 {_yi(total)}，上漲的買盤主要不是來自法人",
+            out.append(_reason("flows_divergence", f"三大法人合計賣超約 {_yi(total)}{est}，上漲的買盤主要不是來自法人",
                                "info", 6.5))
 
     # 6. 成交值
     t = f.get("turnover")
     if t and t.get("ratio"):
-        val = f"上市成交值 {t['value'] / 1e8:,.0f} 億元，為近 {t['avg_days']} 日平均的 {t['ratio']:.2f} 倍"
+        label = "上市普通股成交值" if t.get("source") == "stocks" else "上市成交值"
+        val = f"{label} {t['value'] / 1e8:,.0f} 億元，為近 {t['avg_days']} 日平均的 {t['ratio']:.2f} 倍"
         if t["ratio"] >= cfg["heavy_volume_ratio"]:
             out.append(_reason("volume", f"{val}，{'爆量下跌，賣壓沉重' if down else '價漲量增' if up else '量大不動'}",
                                "neg" if down else "pos", 6.8))
