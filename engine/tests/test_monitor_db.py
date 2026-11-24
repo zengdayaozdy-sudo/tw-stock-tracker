@@ -101,7 +101,7 @@ def test_tick_writes_heartbeat(repo, database_url):
 
 def test_schedule_check_alerts_once(repo, database_url):
     line, sent = _line()
-    evening = datetime(2026, 11, 9, 17, 35, tzinfo=TZ)
+    evening = datetime(2026, 11, 9, 18, 20, tzinfo=TZ)
     m = Monitor(SETTINGS, lambda: psycopg.connect(database_url), FakeQuotes({}), line, lambda: set(),
                 clock=lambda: evening, sleep=lambda s: None)
     m.tick()

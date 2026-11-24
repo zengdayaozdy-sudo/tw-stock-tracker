@@ -98,9 +98,12 @@ def cmd_fetch(args) -> None:
         # 官方資料尚未更新或不完整：每 10 分鐘重試，最多等 --wait-minutes 分鐘
         while (reason := pending(result)) and waited < args.wait_minutes and _is_trading_day(exchange, trade_date):
             logging.info("%s，10 分鐘後重試", reason)
-            # 先把這一輪寫入的資料提交，結束交易再睡；交易開著閒置 10 分鐘會被 Neon 以 idle-in-transaction 逾時切斷連線
+            # 先把這一輪寫入的資料提交，結束交易再睡；睡的期間每分鐘碰一次資料庫，
+            # 避免 Neon 閒置自動暫停後切斷連線（2026-11-19、20、23 晚間補抓都因此 SSL 中斷失敗）
             conn.commit()
-            time.sleep(600)
+            for _ in range(10):
+                time.sleep(60)
+                _keepalive(conn)
             waited += 10
             result = fetch_daily(settings, repo, exchange, finmind, trade_date)
         if args.require_margin and result.market_open and (reason := pending(result)):
@@ -127,6 +130,26 @@ def _is_trading_day(exchange, d: date) -> bool:
         return True
 
 
+def _too_early(schedule_cfg: dict, phase: str, now: datetime) -> bool:
+    """排程延遲到白天才執行（已過凌晨分界、但還沒到該階段官方資料公布時間）→ 略過。"""
+    if now.hour < LATE_RUN_CUTOFF_HOUR:
+        return False  # 凌晨補跑：處理的是前一個交易日，資料早已公布
+    earliest = schedule_cfg.get("evening_earliest" if phase == "evening" else "main_earliest")
+    if not earliest:
+        return False
+    h, m = (int(x) for x in earliest.split(":"))
+    return (now.hour, now.minute) < (h, m)
+
+
+def _write_output(line: str) -> None:
+    import os
+
+    out = os.environ.get("GITHUB_OUTPUT")
+    if out:
+        with open(out, "a", encoding="utf-8") as f:
+            f.write(line + "\n")
+
+
 def cmd_trading_day(args) -> None:
     """判斷是否為交易日；在 GitHub Actions 中寫入 open=true/false 供後續步驟判斷。"""
     import os
@@ -136,6 +159,11 @@ def cmd_trading_day(args) -> None:
 
     settings = load_settings()
     d = _parse_date(args.date)
+    if not args.date and _too_early(settings.sources.get("schedule", {}), args.phase, datetime.now(TZ)):
+        phase_name = "晚間補抓" if args.phase == "evening" else "收盤後主流程"
+        print(f"{d}：{phase_name}的官方資料還沒公布（排程延遲到白天才執行），略過")
+        _write_output("open=false")
+        return
     if getattr(args, "skip_if_done", False) and os.environ.get("DATABASE_URL"):
         # 備援排程：當天這個階段已完成就不再重跑，避免重複推播（下午：每日報告；晚間：晚間補抓）
         from engine.db import connect

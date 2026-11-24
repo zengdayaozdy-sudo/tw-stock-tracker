@@ -67,10 +67,10 @@ def test_next_wake_schedule():
     assert _monitor(fri_morning).next_wake(fri_morning) == ("wait", 3600)
     in_session = datetime(2026, 11, 6, 10, 0, tzinfo=TZ)
     assert _monitor(in_session).next_wake(in_session) == ("check", 0)
-    after_close = datetime(2026, 11, 6, 14, 0, tzinfo=TZ)   # 收盤後先等到 17:30 檢查收盤後排程
+    after_close = datetime(2026, 11, 6, 14, 0, tzinfo=TZ)   # 收盤後先等到 18:15 檢查收盤後排程
     state, wait = _monitor(after_close).next_wake(after_close)
-    assert state == "wait" and wait == 3.5 * 3600
-    evening = datetime(2026, 11, 6, 18, 0, tzinfo=TZ)
+    assert state == "wait" and wait == 4.25 * 3600
+    evening = datetime(2026, 11, 6, 18, 30, tzinfo=TZ)
     m = _monitor(evening)
     assert m.next_wake(evening) == ("schedule", 0)
     m._schedule_checked = evening.date()                     # 檢查過後 → 下週一 09:00

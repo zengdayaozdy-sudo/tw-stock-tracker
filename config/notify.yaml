@@ -23,7 +23,7 @@ intraday:                       # 盤中停損監控（第 8 階段，常駐在�
   batch_size: 50                # 每次查詢最多幾檔
   error_backoff_seconds: [30, 60, 120, 300]   # 連線失敗時的重試間隔
   keep_awake: true              # macOS：交易時間內阻止系統閒置睡眠（caffeinate）
-  schedule_check: "17:30"       # 交易日此時間檢查收盤後排程是否已開始（GitHub 排程停用或延遲時推播警告）
+  schedule_check: "18:15"       # 交易日此時間檢查收盤後排程是否已開始（Vercel 主流程 17:00–17:59 觸發；排程停用或延遲時推播警告）
 
 daily_summary:                  # 每日盤勢總結與隔日操作計畫（engine/summary，2026-11-12 擁有者要求）
   enabled: true

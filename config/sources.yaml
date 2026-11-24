@@ -123,3 +123,10 @@ http:
   max_retries: 4
   backoff_base_seconds: 2
   user_agent: tw-stock-tracker/0.1
+
+# 每日排程的最早有效時間（台灣時間）。排程延遲到隔天白天才執行時，官方資料還沒公布，
+# 在這個時間之前直接略過，不在 GitHub Actions 裡空等（等待時間一樣計費）。
+# 依據：三大法人約 15:00–16:00 公布；證交所融資融券晚間公布、時間不固定，櫃買約 22 點後（2026-11-11 實測）。
+schedule:
+  main_earliest: "16:00"      # 收盤後主流程
+  evening_earliest: "21:00"   # 晚間補抓
