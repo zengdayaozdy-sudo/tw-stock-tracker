@@ -147,6 +147,12 @@ GitHub Actions 的排程在尖峰時段常延遲數小時，所以由 Make 情�
 - 用量：Make 免費方案每月 1,000 credits、最多 2 個啟用中的情境；本情境每月約 250 credits。
 - 驗證：Make 情境頁按 Run once；在 17、20、23 點的時段內執行，GitHub Actions 應出現一筆 `workflow_dispatch` 的「每日收盤後批次」。
 
+### 4.1.2 公開 repo 的注意事項
+
+- GitHub Actions 的執行記錄與「手動操作」填入的參數人人可看。`notify`、`holdings`、`trade`、`stats`、`capital` 在 Actions 裡只印一行完成訊息，內容照常寫入資料庫並推播 LINE。
+- 登錄買賣請用網站「持股與交易」或 MCP 的 `record_trade`，不要用「手動操作」的 trade-buy／trade-sell：參數（代號、價格、股數）會留在公開記錄裡。
+- 金鑰只放 GitHub Secrets 與 Vercel 環境變數，記錄裡會自動遮蔽。
+
 ### 4.2 指令一覽（`python -m engine.cli <指令>`，大多可加 `--date YYYY-MM-DD`）
 
 | 指令 | 用途 |

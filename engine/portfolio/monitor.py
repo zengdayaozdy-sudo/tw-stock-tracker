@@ -102,7 +102,8 @@ def run_holdings(settings: Settings, repo: Repository, as_of: date) -> dict[str,
     bearish = repo.market_light(as_of) == "bearish"
     news: dict[str, list[str]] = {}
     for sid, fl in repo.flags(as_of).items():
-        news[sid] = [f["reason"] for f in fl if f["filter"] == "news"]
+        # 只有個股重大利空（kind=exclude）算賣出理由；族群、盤勢消息與產業政策類只是警示（第 7.1 節），不觸發賣出
+        news[sid] = [f["reason"] for f in fl if f["filter"] == "news" and f["kind"] == "exclude"]
     names = repo.stock_names([h["stock_id"] for h in holdings])
     signals: list[dict] = []
     missing: list[str] = []

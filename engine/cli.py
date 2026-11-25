@@ -8,6 +8,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import os
 from datetime import date, datetime, timedelta
 
 from engine.config import TZ, load_settings
@@ -52,6 +53,28 @@ def _keepalive(conn) -> None:
     conn.execute("SELECT 1")
     conn.commit()
 
+
+
+def _private(fn):
+    """repo 公開後 GitHub Actions 的執行記錄人人可看：在 Actions 裡不印出持股、交易、損益與 LINE 報告內容。
+
+    內容照常寫入資料庫、推播 LINE；本機執行或設定 SHOW_PRIVATE_LOGS=1 時照常印出。
+    """
+    import functools
+
+    @functools.wraps(fn)
+    def wrapper(args):
+        if os.environ.get("GITHUB_ACTIONS") != "true" or os.environ.get("SHOW_PRIVATE_LOGS") == "1":
+            return fn(args)
+        import contextlib
+        import io
+
+        with contextlib.redirect_stdout(io.StringIO()):
+            result = fn(args)
+        print("（已執行；持股、交易與報告內容不顯示在公開記錄，請看網站或 LINE）")
+        return result
+
+    return wrapper
 
 def cmd_plan(_args) -> None:
     s = load_settings()
@@ -569,6 +592,7 @@ def cmd_signals(args) -> None:
               f"買進 {x['entry_low']:g}–{x['entry_high']:g}  停損 {x['stop_loss']:g}  目標 {x['take_profit']:g}")
 
 
+@_private
 def cmd_notify(args) -> None:
     from engine.db import connect
     from engine.joblog import job_run
@@ -671,6 +695,7 @@ def cmd_line_test(args) -> None:
     print(f"已送出 {sent} 則")
 
 
+@_private
 def cmd_holdings(args) -> None:
     from engine.db import connect
     from engine.joblog import job_run
@@ -700,6 +725,7 @@ def _price(x) -> str:
     return "—" if x is None else f"{x:g}"
 
 
+@_private
 def cmd_trade(args) -> None:
     from engine.db import connect
     from engine.portfolio.trades import TradeError, record_trade
@@ -738,6 +764,7 @@ def cmd_trade(args) -> None:
         print("  已全部賣出")
 
 
+@_private
 def cmd_stats(args) -> None:
     from engine.db import connect
     from engine.portfolio.stats import BENCHMARK_LABELS, portfolio_stats
@@ -762,6 +789,7 @@ def cmd_stats(args) -> None:
     print(f"整體績效（佔總資金）{pct(st['portfolio_return'])}｜同期 {bench}")
 
 
+@_private
 def cmd_capital(args) -> None:
     from engine.db import connect
     from engine.repository import Repository

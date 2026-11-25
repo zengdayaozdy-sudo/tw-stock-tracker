@@ -95,6 +95,19 @@ def test_holdings_check_writes_sell_signals(repo):
     assert "2330 台積電 1 張｜成本 170.24 現價 179（+5.1%）｜停損 156" in text
 
 
+def test_holdings_news_warning_is_not_sell_reason(repo):
+    record_trade(SETTINGS, repo, "2330", DAYS[70], "buy", 170, 1000)   # 上漲中，價格面不觸發
+    repo.replace_flags(AS_OF, "news", [
+        {"stock_id": "2330", "kind": "warn", "reason": "盤勢消息：政策與地緣風險：出口管制"},
+    ])
+    assert run_holdings(SETTINGS, repo, AS_OF)["sell_signals"] == []
+    repo.replace_flags(AS_OF, "news", [
+        {"stock_id": "2330", "kind": "exclude", "reason": "現金增資：董事會決議辦理現增"},
+    ])
+    sells = run_holdings(SETTINGS, repo, AS_OF)["sell_signals"]
+    assert len(sells) == 1 and "消息面重大利空" in sells[0]["reason"]
+
+
 def test_holdings_check_skips_holiday(repo):
     with repo.conn.cursor() as cur:
         cur.execute("INSERT INTO job_logs (job, run_date, status) VALUES ('fetch', '2026-11-07', 'skipped')")

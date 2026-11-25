@@ -1,9 +1,8 @@
 name: 每週維護
 
+# 觸發：Make 情境「台股追蹤｜排程中樞」週六 12 點（台灣時間）以 workflow_dispatch 啟動。
+# 集保股權分散表於週五資料日後公布。不保留 GitHub 排程，避免同一天跑兩次（本流程沒有「已完成就略過」）。
 on:
-  schedule:
-    # 台灣時間（UTC+8）週六 12:00 ＝ UTC 04:00。集保股權分散表於週五資料日後公布。
-    - cron: "0 4 * * 6"
   workflow_dispatch:
 
 concurrency:
