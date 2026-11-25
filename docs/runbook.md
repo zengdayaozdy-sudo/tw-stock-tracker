@@ -112,8 +112,6 @@ git clone https://github.com/zengdayaozdy-sudo/tw-stock-tracker.git ~/tw-stock-t
 | `ANTHROPIC_API_KEY`、`ANTHROPIC_MODEL` | 引擎 | Claude（預設 claude-opus-5-5） |
 | `SITE_PASSWORD`、`SESSION_SECRET` | 網站 | 單一密碼登入與 session 簽章 |
 | `MCP_TOKEN` | 網站 | MCP 接口權杖（至少 32 字元）；未設定或太短時接口關閉 |
-| `CRON_SECRET` | 網站（Vercel） | Vercel 定時觸發的驗證字串（至少 16 字元，自行產生）；Vercel 呼叫時會自動帶上 |
-| `GITHUB_DISPATCH_TOKEN` | 網站（Vercel） | GitHub fine-grained token，只授權本 repo 的 Actions 讀寫，用來啟動 daily.yml |
 | `SITE_URL` | 引擎 | LINE 報告附網站連結 |
 | `TEST_DATABASE_URL` | 測試 | 測試用資料庫（會清空 public schema） |
 
@@ -126,30 +124,28 @@ git clone https://github.com/zengdayaozdy-sudo/tw-stock-tracker.git ~/tw-stock-t
 | 時間 | 事件 |
 |---|---|
 | 09:00–13:30 | Mac 盤中監控每 3 分鐘檢查持股停損 |
-| 17:00–18:00 | Vercel 觸發收盤後主流程：行情、法人、估值、重大訊息、評分、訊號、LINE 每日報告（三大法人約 15:00–16:00 公布，此時已齊全，不等待） |
-| 18:15 | Mac 檢查當天收盤後批次是否已開始，沒有就推播「排程未執行」 |
-| 19:00–20:00 | Vercel 再觸發一次主流程（當天已完成就略過；17 點那次資料不齊時由這次補上） |
-| 23:00–24:00 | Vercel 觸發晚間補抓：當日融資融券（證交所晚間公布、櫃買約 22 點後，此時已齊全，不等待；仍缺只列警告）、借券賣出、15:30 之後的重大訊息，重算評分與訊號；訊號有變動才推播「晚間更新」 |
-| 18:30、23:30 | GitHub 自己的排程（備援；尖峰時可能延遲數小時。延遲到凌晨 08:00 以前才執行，處理的仍是前一個交易日；延遲到隔天白天、官方資料公布前則直接略過） |
+| 17 點多 | Make 啟動收盤後主流程：行情、法人、估值、重大訊息、評分、訊號、LINE 每日報告（三大法人約 15:00–16:00 公布，此時已齊全，不等待） |
+| 18:30 | GitHub 自己的排程（備援；當天已完成就略過） |
+| 20 點多 | Make 再啟動一次主流程（當天已完成就略過；前面失敗或資料不齊時由這次補上） |
+| 23 點多 | Make 啟動晚間補抓：當日融資融券（證交所晚間公布、櫃買約 22 點後，此時已齊全，不等待；仍缺只列警告）、借券賣出、15:30 之後的重大訊息，重算評分與訊號；訊號有變動才推播「晚間更新」 |
+| 23:30 | GitHub 自己的排程（備援；尖峰時可能延遲數小時。延遲到凌晨 08:00 以前才執行，處理的仍是前一個交易日；延遲到隔天白天、官方資料公布前則直接略過） |
 
-Vercel 免費方案的 Cron 只保證在指定的那個小時內觸發，所以表上寫的是時段。抓取步驟不在 GitHub Actions 裡等待資料公布：等待時間一樣計入 Actions 用量，私人 repo 免費額度每月 2,000 分鐘。
+Make 情境每小時執行一次，實際分鐘數取決於情境啟用的時間點，所以表上寫的是時段。抓取步驟不在 GitHub Actions 裡等待資料公布。repo 於 2026-11-25 改為公開，Actions 不計分鐘。
 
 同一階段當天已完成時，後續的觸發都在「判斷是否為交易日」步驟直接略過，不會重複推播。下午的每日報告沒送出時，晚間補抓改送完整報告。
 
 休市日：`trading-day` 判斷後略過所有步驟，並留下休市紀錄。
 
-### 4.1.1 設定 Vercel 定時觸發（一次性）
+### 4.1.1 Make 排程中樞
 
-GitHub Actions 的排程在尖峰時段常延遲數小時，所以由 Vercel Cron（`web/vercel.json`）在交易日 16、18 點呼叫 `/api/cron/daily`、21 點呼叫 `/api/cron/evening`，再由它們啟動 GitHub 的 daily.yml（主流程／晚間補抓）。
+GitHub Actions 的排程在尖峰時段常延遲數小時，所以由 Make 情境「台股追蹤｜排程中樞」準時啟動，GitHub 自己的排程只當備援。
 
-1. GitHub → Settings → Developer settings → Fine-grained tokens → Generate new token：Repository access 只選 `tw-stock-tracker`，Permissions 只開 **Actions: Read and write**，期限建議一年。
-2. Vercel 專案 → Settings → Environment Variables（Production）新增：
-   - `GITHUB_DISPATCH_TOKEN`：上一步的 token
-   - `CRON_SECRET`：自行產生的隨機字串（至少 16 字元，例如在終端機執行 `openssl rand -hex 24`）
-3. 到 GitHub 推送任一 commit（或在 Vercel 重新部署）讓設定生效。
-4. 驗證：Vercel 專案 → Settings → Cron Jobs 會列出三個時段，可按 Run 手動觸發一次；GitHub Actions 應出現一筆 `workflow_dispatch` 的「每日收盤後批次」。
-
-沒設定這兩個變數時，`/api/cron/daily` 回 401／500，只剩 GitHub 自己的排程。
+- 情境每小時執行一次，只在交易日 17:00–23:59 與週六 12:00–12:59 的時段內執行；依台灣時間的小時決定動作：17 點與 20 點啟動 daily.yml 主流程、23 點啟動晚間補抓、週六 12 點啟動 weekly.yml，其餘小時不做事。
+- 啟動時帶 `source=make`，同一階段當天已完成就在「判斷是否為交易日」步驟略過。
+- 連線：Make 的「tw-stock-tracker GitHub」（GitHub OAuth）。授權失效時情境會失敗，Make 會寄信通知；到 Make → Credentials 重新授權即可。
+- 流程中途失敗由 workflow 的「失敗時推播系統警告」步驟用 LINE 通知；Make 不經手 LINE。
+- 用量：Make 免費方案每月 1,000 credits、最多 2 個啟用中的情境；本情境每月約 250 credits。
+- 驗證：Make 情境頁按 Run once；在 17、20、23 點的時段內執行，GitHub Actions 應出現一筆 `workflow_dispatch` 的「每日收盤後批次」。
 
 ### 4.2 指令一覽（`python -m engine.cli <指令>`，大多可加 `--date YYYY-MM-DD`）
 

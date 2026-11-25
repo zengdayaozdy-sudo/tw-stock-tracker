@@ -3,19 +3,5 @@
   "regions": [
     "sin1"
   ],
-  "ignoreCommand": "if [ -n \"$VERCEL_GIT_PREVIOUS_SHA\" ]; then git diff --quiet \"$VERCEL_GIT_PREVIOUS_SHA\" HEAD -- .; else exit 1; fi",
-  "crons": [
-    {
-      "path": "/api/cron/daily",
-      "schedule": "0 9 * * 1-5"
-    },
-    {
-      "path": "/api/cron/daily",
-      "schedule": "0 11 * * 1-5"
-    },
-    {
-      "path": "/api/cron/evening",
-      "schedule": "0 15 * * 1-5"
-    }
-  ]
+  "ignoreCommand": "if [ -n \"$VERCEL_GIT_PREVIOUS_SHA\" ]; then git diff --quiet \"$VERCEL_GIT_PREVIOUS_SHA\" HEAD -- .; else exit 1; fi"
 }

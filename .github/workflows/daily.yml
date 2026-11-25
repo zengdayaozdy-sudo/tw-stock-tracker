@@ -4,7 +4,7 @@ name: 每日收盤後批次
 #   main     收盤後：行情、法人、估值、評分、訊號、盤勢總結與隔日計畫、LINE 每日報告
 #   evening  晚間補抓：當日融資融券、借券賣出、15:30 之後的重大訊息，重算評分與訊號，只推播有變動的部分
 #
-# 主要觸發：Vercel Cron（web/vercel.json）呼叫 /api/cron/daily 與 /api/cron/evening，再以 workflow_dispatch 啟動。
+# 主要觸發：Make 情境「台股追蹤｜排程中樞」以 workflow_dispatch 啟動（交易日 17 點主流程、20 點補跑、23 點晚間補抓）。
 # 備援觸發：下面的 GitHub 排程。GitHub 排程尖峰時可能延遲數小時（2026-11-10 延遲約 8 小時、2026-11-24 延遲約 11.5 小時）。
 #
 # 時間安排在官方資料「確定已公布」之後，抓取步驟不在 Actions 裡等待（等待時間一樣計入 Actions 用量；
@@ -28,7 +28,7 @@ on:
         required: false
         default: main
       source:
-        description: 觸發來源（make＝Make 定時觸發、vercel-cron＝網站定時觸發；當天已完成就略過）
+        description: 觸發來源（make＝Make 定時觸發，當天已完成就略過）
         required: false
 
 concurrency:
@@ -54,7 +54,7 @@ jobs:
       TZ: Asia/Taipei
       DATE_ARG: ${{ inputs.date && format('--date {0}', inputs.date) || '' }}
       PHASE: ${{ inputs.phase || (github.event.schedule == '30 15 * * 1-5' && 'evening') || 'main' }}
-      SKIP_IF_DONE: ${{ (github.event_name == 'schedule' || contains(fromJSON('["vercel-cron","make"]'), inputs.source)) && '--skip-if-done' || '' }}
+      SKIP_IF_DONE: ${{ (github.event_name == 'schedule' || inputs.source == 'make') && '--skip-if-done' || '' }}
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
@@ -71,7 +71,7 @@ jobs:
         run: python -m engine.cli trading-day $DATE_ARG --phase $PHASE $SKIP_IF_DONE
       - name: 抓取資料與完整性檢查
         if: steps.day.outputs.open == 'true'
-        # 不等待：排程時間已排在官方資料公布之後。主流程資料若仍未公布，由下一次觸發（Vercel 19 點、GitHub 18:30 備援）補上；
+        # 不等待：排程時間已排在官方資料公布之後。主流程資料若仍未公布，由下一次觸發（GitHub 18:30 備援、Make 20 點補跑）補上；
         # 晚間融資融券若仍缺，只列警告，隔天主流程再補。
         run: |
           if [ "$PHASE" = evening ]; then
